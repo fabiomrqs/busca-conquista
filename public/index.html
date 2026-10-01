@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Qual é a música da sua conquista? | Senac EAD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --marinho: #1D4480;
+    --azul: #4797CB;
+    --azul-claro: #EAF3FA;
+    --texto: #2B3A55;
+    --suave: #5E6B7A;
+    --borda: #CBD6E2;
+    --campo: #F4F7FB;
+    --erro: #C0392B;
+    --fonte: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { background: #fff; color: var(--texto); font: 1rem/1.45 var(--fonte); -webkit-font-smoothing: antialiased; }
+  img { max-width: 100%; display: block; }
+  button { font: inherit; }
+  :focus-visible { outline: 3px solid var(--azul); outline-offset: 3px; }
+  [tabindex="-1"]:focus { outline: none; }
+
+  /* ---------- Estrutura das telas ---------- */
+  .tela {
+    position: relative; isolation: isolate;
+    max-width: 440px; min-height: 100dvh; margin: 0 auto;
+    padding: calc(1.25rem + env(safe-area-inset-top, 0px)) 1.5rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; overflow-x: clip;
+  }
+  .tela[hidden] { display: none; }
+  /* mancha de aquarela atrás do conteúdo */
+  .tela::before {
+    content: ""; position: absolute; z-index: -1; pointer-events: none;
+    left: 50%; top: 9rem; width: 120%; aspect-ratio: 1; transform: translateX(-50%);
+    background:
+      radial-gradient(closest-side at 45% 45%, rgba(71,151,203,.16), transparent 70%),
+      radial-gradient(closest-side at 62% 58%, rgba(29,68,128,.08), transparent 75%);
+    filter: blur(6px);
+  }
+  .topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+  .logo-campanha { width: 130px; height: auto; }
+  .logo-senac { width: 80px; height: auto; }
+  .conteudo { flex: 1; display: flex; flex-direction: column; }
+  .rodape { display: flex; justify-content: center; padding-top: 1.5rem; }
+  .painel { flex: 1; display: flex; flex-direction: column; }
+  #tela-obrigado .painel { flex: none; }
+
+  h1, h2 { color: var(--marinho); font-weight: 800; text-transform: uppercase; line-height: 1.12; letter-spacing: -.01em; }
+  h2 { font-size: 1.55rem; margin: 2rem 0 1.25rem; }
+
+  /* ---------- Botões ---------- */
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: .75rem; width: 100%;
+    min-height: 60px; padding: .9rem 1.5rem; border-radius: 999px; border: 2px solid var(--marinho);
+    background: var(--marinho); color: #fff; font-weight: 800; font-size: 1.1rem; text-transform: uppercase;
+    text-decoration: none; cursor: pointer; transition: filter .15s, opacity .15s;
+  }
+  .btn:hover { filter: brightness(1.12); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+  .btn-contorno { background: #fff; color: var(--marinho); }
+  .btn-contorno:hover { background: var(--azul-claro); filter: none; }
+  .acoes { margin-top: auto; padding-top: 1.75rem; display: grid; gap: .9rem; }
+
+  /* ---------- Tela 1 ---------- */
+  #tela-inicio { text-align: center; }
+  #tela-inicio::before { top: 2.5rem; }
+  #tela-inicio .topo { justify-content: center; padding-top: 2rem; }
+  #tela-inicio .logo-campanha { width: 230px; }
+  #tela-inicio h1 { font-size: clamp(2rem, 9.5vw, 2.5rem); margin: 2.25rem 0 1.25rem; }
+  #tela-inicio .chamada { color: var(--suave); font-size: 1.08rem; max-width: 22em; margin: 0 auto; }
+  #tela-inicio .acoes { margin-top: 2.5rem; padding: 0 .5rem; }
+  #tela-inicio .rodape { margin-top: auto; }
+
+  /* ---------- Formulários ---------- */
+  .grupo { margin-bottom: 1rem; }
+  .rotulo { display: block; color: var(--marinho); font-weight: 700; font-size: .95rem; margin-bottom: .35rem; }
+  .entrada {
+    width: 100%; min-height: 52px; padding: .8rem 1rem; border: 2px solid var(--borda); border-radius: 12px;
+    background: #fff; color: var(--texto); font: 500 1.05rem var(--fonte);
+  }
+  .entrada:focus { outline: none; border-color: var(--azul); }
+  .entrada[aria-invalid="true"] { border-color: var(--erro); }
+  .msg-erro { color: var(--erro); font-size: .85rem; font-weight: 600; margin-top: .3rem; }
+  .msg-erro:empty { display: none; }
+  fieldset { border: 0; padding: 0; margin: 0 0 1rem; }
+  legend { padding: 0; }
+  .escolha {
+    display: flex; align-items: center; gap: .75rem; min-height: 52px; padding: .7rem 1rem; margin-bottom: .6rem;
+    border: 2px solid var(--borda); border-radius: 12px; cursor: pointer; font-size: 1.05rem;
+  }
+  .escolha:has(input:checked) { border-color: var(--azul); background: var(--azul-claro); font-weight: 700; }
+  .escolha:has(input:focus-visible) { outline: 3px solid var(--azul); outline-offset: 2px; }
+  .escolha input { width: 22px; height: 22px; accent-color: var(--azul); margin: 0; flex: none; }
+  .campo-amigo { animation: abrir .2s ease-out; }
+  @keyframes abrir { from { opacity: 0; transform: translateY(-6px); } }
+  .aceite { display: flex; gap: .6rem; align-items: flex-start; font-size: .85rem; color: var(--suave); cursor: pointer; }
+  .aceite input { width: 20px; height: 20px; accent-color: var(--marinho); margin: 0; flex: none; }
+  .aceite a { color: var(--marinho); }
+
+  /* ---------- Tela 3: busca ---------- */
+  .busca {
+    display: flex; align-items: center; gap: .75rem; min-height: 58px; padding: 0 1.1rem;
+    background: var(--campo); border: 2px solid var(--borda); border-radius: 999px;
+  }
+  .busca:focus-within { border-color: var(--azul); }
+  .busca svg { flex: none; color: var(--suave); }
+  .busca input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--texto); font: 500 1.08rem var(--fonte); }
+  .busca input::-webkit-search-cancel-button { display: none; }
+  .fonte-resultados { display: flex; align-items: center; gap: .45rem; margin: 1.1rem 0 .7rem; color: var(--suave); font-size: .9rem; }
+  .fonte-resultados svg { color: #1DB954; }
+  .status { color: var(--suave); font-size: .95rem; min-height: 1.4em; }
+  .resultados { list-style: none; padding: 0; display: grid; gap: .6rem; }
+  .opcao {
+    display: grid; grid-template-columns: 56px 1fr 26px; align-items: center; gap: .9rem;
+    padding: .55rem .9rem .55rem .55rem; border: 2px solid var(--borda); border-radius: 12px; cursor: pointer; background: #fff;
+  }
+  .opcao input { position: absolute; opacity: 0; pointer-events: none; }
+  .opcao:has(input:checked) { border-color: var(--azul); background: var(--azul-claro); }
+  .opcao:has(input:focus-visible) { outline: 3px solid var(--azul); outline-offset: 2px; }
+  .capinha {
+    width: 56px; height: 56px; border-radius: 8px; overflow: hidden; background: var(--azul); color: #fff;
+    display: grid; place-items: center;
+  }
+  .opcao:has(input:checked) .capinha { background: var(--marinho); box-shadow: 0 0 0 2px var(--azul); }
+  .capinha img { width: 100%; height: 100%; object-fit: cover; }
+  .faixa-txt { min-width: 0; }
+  .faixa-txt strong, .faixa-txt small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .faixa-txt strong { font-size: 1.02rem; }
+  .faixa-txt small { color: var(--suave); font-size: .88rem; }
+  .marca { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; }
+  .opcao:has(input:checked) .marca { background: var(--marinho); }
+  .marca svg { display: none; }
+  .opcao:has(input:checked) .marca svg { display: block; }
+  .esqueleto { height: 76px; border-radius: 12px; background: var(--campo); animation: pulsar 1.2s ease-in-out infinite; }
+  @keyframes pulsar { 50% { opacity: .5; } }
+  .vazio { color: var(--suave); padding: .5rem 0; }
+  .vazio strong { display: block; color: var(--marinho); font-size: 1.05rem; }
+  #tela-musica .acoes {
+    position: sticky; bottom: 0; background: linear-gradient(transparent, #fff 30%);
+    padding-bottom: .25rem; margin-left: -.25rem; margin-right: -.25rem; padding-left: .25rem; padding-right: .25rem;
+  }
+
+  /* ---------- Tela 4: obrigado ---------- */
+  #tela-obrigado { text-align: center; }
+  #tela-obrigado h2 { font-size: 1.25rem; margin: 2rem 0 .4rem; }
+  #tela-obrigado .sub { color: var(--suave); font-size: 1.02rem; max-width: 20em; margin: 0 auto 1.5rem; }
+  .cartao {
+    background: var(--azul); color: #fff; border-radius: 22px; padding: 1.75rem 1.5rem 1.4rem;
+    box-shadow: 0 10px 24px rgba(29, 68, 128, .22);
+  }
+  .cartao h3 { font-weight: 800; font-size: 1.15rem; text-transform: uppercase; line-height: 1.25; max-width: 15em; margin: 0 auto 1.4rem; }
+  .cartao .capa {
+    width: 62%; max-width: 180px; aspect-ratio: 1; margin: 0 auto 1.4rem; border-radius: 12px; overflow: hidden;
+    background: var(--marinho); display: grid; place-items: center;
+  }
+  .cartao .capa img { width: 100%; height: 100%; object-fit: cover; }
+  .cartao .capa img.logo-na-capa { width: 80%; height: auto; object-fit: contain; }
+  .cartao .musica { font-weight: 700; font-size: 1.5rem; text-transform: uppercase; line-height: 1.15; overflow-wrap: anywhere; }
+  .cartao .artista { font-size: 1rem; opacity: .92; margin-top: .25rem; }
+  .compartilhe { color: var(--marinho); font-weight: 700; margin: 1.5rem 0 .7rem; font-size: 1.05rem; }
+  .redes { display: flex; justify-content: center; gap: 1.6rem; }
+  .redes a, .redes button {
+    width: 64px; height: 64px; border-radius: 50%; background: var(--marinho); color: #fff; border: 0; cursor: pointer;
+    display: grid; place-items: center; transition: filter .15s;
+  }
+  .redes a:hover, .redes button:hover { filter: brightness(1.15); }
+  .link-continuar {
+    display: inline-flex; align-items: center; gap: .5rem; margin: 1.6rem auto 0; padding: .5rem 1rem;
+    background: none; border: 0; color: var(--marinho); font-weight: 700; font-size: 1.08rem; cursor: pointer;
+  }
+  .aviso {
+    position: fixed; left: 50%; bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    background: var(--marinho); color: #fff; padding: .7rem 1.1rem; border-radius: 10px; font-size: .92rem;
+    max-width: calc(100% - 2rem); text-align: center; z-index: 10;
+  }
+  .aviso[hidden] { display: none; }
+
+  /* ---------- Tela 5: mural ---------- */
+  .mural { margin-top: 2.5rem; padding-top: .75rem; } /* espaço para a fita dos cards da 1ª linha */
+  #tela-mural .acoes {
+    position: sticky; bottom: 0; z-index: 2;
+    margin: 0 -1.5rem; padding: 2.5rem 1.5rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(rgba(255,255,255,0), #fff 2.25rem);
+  }
+  .notas { list-style: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem .8rem; }
+  .nota {
+    --giro: 0deg;
+    position: relative; padding: 1.15rem .8rem 1rem; font-size: .88rem; line-height: 1.35; min-height: 118px;
+    transform: rotate(var(--giro)); box-shadow: 0 3px 8px rgba(29, 68, 128, .16);
+  }
+  .nota::before { /* fita adesiva */
+    content: ""; position: absolute; top: -9px; left: 50%; width: 46px; height: 16px;
+    transform: translateX(-50%) rotate(-3deg); background: rgba(71, 151, 203, .45);
+  }
+  .nota b { font-weight: 800; text-transform: uppercase; }
+  .nota:nth-child(6n+1) { background: #fff; --giro: -1.5deg; }
+  .nota:nth-child(6n+2) { background: var(--azul); color: #fff; --giro: 1.2deg; }
+  .nota:nth-child(6n+3) { background: var(--marinho); color: #fff; --giro: .8deg; }
+  .nota:nth-child(6n+4) { background: var(--azul-claro); --giro: -1deg; }
+  .nota:nth-child(6n+5) { background: var(--azul); color: #fff; --giro: -.6deg; }
+  .nota:nth-child(6n+6) { background: #fff; --giro: 1.4deg; }
+  .nota:nth-child(6n+1) b, .nota:nth-child(6n+4) b, .nota:nth-child(6n+6) b { color: var(--marinho); }
+  .nota.nova { outline: 3px solid #F2A33A; outline-offset: 3px; animation: fixar .55s cubic-bezier(.2, 1.4, .4, 1) both; }
+  .nota .selo {
+    position: absolute; right: -6px; bottom: -10px; background: #F2A33A; color: var(--marinho);
+    font-size: .7rem; font-weight: 800; padding: .15rem .45rem; border-radius: 999px;
+  }
+  @keyframes fixar { from { opacity: 0; transform: rotate(var(--giro)) scale(.6) translateY(-14px); } }
+  #tela-mural .btn small { display: block; font-size: .92rem; font-weight: 500; text-transform: none; }
+  #tela-mural .btn .rotulo-btn { text-align: left; line-height: 1.2; }
+  #tela-mural .btn-contorno { justify-content: center; position: relative; }
+  #tela-mural .btn-contorno .rotulo-btn { text-align: center; }
+  #tela-mural .btn-contorno svg { position: absolute; right: 1.5rem; }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+  /* ---------- Responsivo ---------- */
+  .so-desktop { display: none; }
+  .intro-mural { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  /* Tablet: coluna central em cartão */
+  @media (min-width: 600px) and (max-width: 959px) {
+    body { background: #EEF3F8; }
+    .tela { max-width: 560px; background: #fff; box-shadow: 0 0 40px rgba(29,68,128,.08); padding-left: 2.5rem; padding-right: 2.5rem; }
+    .notas { grid-template-columns: repeat(3, 1fr); }
+    #tela-mural .acoes { margin: 0 -2.5rem; padding-left: 2.5rem; padding-right: 2.5rem; }
+  }
+
+  /* Desktop: duas colunas, título à esquerda e ação à direita */
+  @media (min-width: 960px) {
+    .tela { max-width: 1180px; padding: 2.5rem clamp(2.5rem, 5vw, 4rem); }
+    .tela::before { left: 26%; top: 5rem; width: 680px; }
+    .logo-campanha { width: 170px; }
+    .logo-senac { width: 110px; }
+    .rodape { padding-top: 3rem; }
+    .so-desktop { display: block; }
+
+    /* Tela 1 */
+    #tela-inicio::before { left: 50%; top: 1rem; width: 820px; }
+    #tela-inicio .topo { padding-top: 2.5rem; }
+    #tela-inicio .logo-campanha { width: 320px; }
+    #tela-inicio h1 { font-size: clamp(3.2rem, 5vw, 4.4rem); max-width: 12em; margin: 2.75rem auto 1.5rem; }
+    #tela-inicio .chamada { font-size: 1.3rem; max-width: 28em; }
+    #tela-inicio .acoes { width: 100%; max-width: 380px; margin: 3rem auto 0; padding: 0; }
+
+    /* Telas 2, 3 e 4 */
+    #form-dados, #tela-musica .conteudo, #tela-obrigado .conteudo {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
+      column-gap: clamp(3rem, 8vw, 7rem); align-items: start; padding-top: 4.5rem;
+    }
+    .intro { position: sticky; top: 2.5rem; }
+    .intro h2 { font-size: clamp(2.4rem, 3.6vw, 3.1rem); margin: 0 0 1.25rem; }
+    .intro p { color: var(--suave); font-size: 1.18rem; max-width: 24em; }
+    .painel { display: flex; flex-direction: column; }
+    .painel .acoes { margin-top: 1.5rem; }
+    .busca { margin-top: 0; }
+    .resultados { max-height: 52dvh; overflow-y: auto; padding: 3px; margin: -3px; }
+
+    /* Tela 4 */
+    #tela-obrigado { text-align: left; }
+    #tela-obrigado .conteudo { grid-template-areas: "intro painel" "compartilhar painel"; grid-template-rows: auto 1fr; }
+    #tela-obrigado .intro { grid-area: intro; position: static; }
+    #tela-obrigado .intro h2 { font-size: clamp(2.4rem, 3.6vw, 3.1rem); margin: 0 0 1rem; }
+    #tela-obrigado .sub { margin: 0; font-size: 1.18rem; max-width: 22em; }
+    #tela-obrigado .painel { grid-area: painel; }
+    #tela-obrigado .compartilhar { grid-area: compartilhar; padding-top: 1rem; }
+    #tela-obrigado .compartilhe { margin-top: 1.5rem; }
+    .redes { justify-content: flex-start; gap: 1.1rem; }
+    .link-continuar { margin-left: -1rem; }
+    .cartao { padding: 2.25rem 2rem 2rem; text-align: center; }
+    .cartao .capa { max-width: 240px; }
+    .cartao .musica { font-size: 1.85rem; }
+
+    /* Tela 5 */
+    .intro-mural { position: static; width: auto; height: auto; overflow: visible; clip: auto; margin-top: 2rem; }
+    .intro-mural h2 { margin: 0 0 .5rem; font-size: clamp(2rem, 3vw, 2.6rem); }
+    .mural { margin-top: 2.25rem; }
+    .notas { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2rem 1.4rem; }
+    .nota { font-size: .95rem; min-height: 140px; padding: 1.4rem 1rem 1.2rem; }
+    #tela-mural .acoes { grid-template-columns: 1fr 1fr; margin: 0; padding: 3rem 0 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ TELA 1 · Início ============ -->
+<section class="tela" id="tela-inicio" data-tela="inicio" aria-labelledby="t1">
+  <header class="topo">
+    <img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!">
+  </header>
+  <div class="conteudo">
+    <h1 id="t1">Qual é a música da sua conquista?</h1>
+    <p class="chamada">Escolha a trilha que marcou a sua jornada ou dedique uma música a alguém que acabou de conquistar esse marco!</p>
+    <div class="acoes">
+      <button class="btn" type="button" data-ir="dados">Quero participar</button>
+    </div>
+  </div>
+  <footer class="rodape"><img class="logo-senac" src="img/img-2.png" alt="Senac"></footer>
+</section>
+
+<!-- ============ TELA 2 · Dados ============ -->
+<section class="tela" id="tela-dados" data-tela="dados" aria-labelledby="t2" hidden>
+  <header class="topo"><img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!"></header>
+  <form class="conteudo" id="form-dados" novalidate>
+    <div class="intro">
+      <h2 id="t2">Conta para a gente</h2>
+      <p class="so-desktop">No mural aparece só o seu primeiro nome. O e-mail fica com o Senac EAD.</p>
+    </div>
+    <div class="painel">
+
+    <div class="grupo">
+      <label class="rotulo" for="nome">Seu nome*</label>
+      <input class="entrada" id="nome" name="nome" autocomplete="name" required minlength="2" aria-describedby="erro-nome">
+      <p class="msg-erro" id="erro-nome"></p>
+    </div>
+
+    <div class="grupo">
+      <label class="rotulo" for="email">Seu e-mail*</label>
+      <input class="entrada" id="email" name="email" type="email" autocomplete="email" inputmode="email" required aria-describedby="erro-email">
+      <p class="msg-erro" id="erro-email"></p>
+    </div>
+
+    <fieldset>
+      <legend class="rotulo">Essa música é:</legend>
+      <label class="escolha"><input type="radio" name="tipo" value="conquista" checked> Da minha conquista</label>
+      <label class="escolha"><input type="radio" name="tipo" value="dedicatoria"> Dedicatória para alguém</label>
+    </fieldset>
+
+    <div class="grupo campo-amigo" id="campo-amigo" hidden>
+      <label class="rotulo" for="amigo">Nome do amigo*</label>
+      <input class="entrada" id="amigo" name="amigo" autocomplete="off" minlength="2" aria-describedby="erro-amigo">
+      <p class="msg-erro" id="erro-amigo"></p>
+    </div>
+
+    <div class="grupo">
+      <label class="aceite">
+        <input type="checkbox" id="aceite" name="aceite" required aria-describedby="erro-aceite">
+        <span>Aceito os <a href="#" target="_blank" rel="noopener">termos e a política de privacidade</a></span>
+      </label>
+      <p class="msg-erro" id="erro-aceite"></p>
+    </div>
+
+    <div class="acoes"><button class="btn" type="submit">Continuar</button></div>
+    </div>
+  </form>
+  <footer class="rodape"><img class="logo-senac" src="img/img-2.png" alt="Senac"></footer>
+</section>
+
+<!-- ============ TELA 3 · Música ============ -->
+<section class="tela" id="tela-musica" data-tela="musica" aria-labelledby="t3" hidden>
+  <header class="topo"><img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!"></header>
+  <div class="conteudo">
+    <div class="intro">
+      <h2 id="t3">Qual música marcou essa conquista?</h2>
+      <p class="so-desktop">Busque pelo nome da música ou do artista e escolha a versão certa.</p>
+    </div>
+    <div class="painel">
+    <div class="busca" role="search">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8"/></svg>
+      <label class="sr" for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Buscar música ou artista</label>
+      <input id="q" type="search" placeholder="Nome da música ou artista" autocomplete="off" enterkeyhint="search">
+    </div>
+    <p class="fonte-resultados">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0a12 12 0 1 0 0 24 12 12 0 0 0 0-24Zm5.5 17.3a.75.75 0 0 1-1 .25c-2.85-1.74-6.43-2.13-10.66-1.17a.75.75 0 1 1-.33-1.46c4.62-1.06 8.6-.6 11.74 1.33.36.22.47.69.25 1.05Zm1.47-3.27a.94.94 0 0 1-1.29.3c-3.26-2-8.23-2.58-12.09-1.41a.94.94 0 0 1-.54-1.8c4.4-1.33 9.88-.68 13.62 1.62.44.27.58.85.3 1.29Zm.13-3.4C15.18 8.3 8.73 8.08 5 9.21a1.12 1.12 0 1 1-.65-2.15c4.28-1.3 11.4-1.05 15.9 1.62a1.12 1.12 0 0 1-1.15 1.93Z"/></svg>
+      Resultados do Spotify
+    </p>
+    <p class="status" id="status" aria-live="polite"></p>
+    <ul class="resultados" id="resultados" role="radiogroup" aria-label="Resultados da busca"></ul>
+    <div class="acoes">
+      <p class="msg-erro" id="erro-envio" role="alert"></p>
+      <button class="btn" type="button" id="confirmar" disabled>Confirmar música</button>
+    </div>
+    </div>
+  </div>
+  <footer class="rodape"><img class="logo-senac" src="img/img-2.png" alt="Senac"></footer>
+</section>
+
+<!-- ============ TELA 4 · Obrigado ============ -->
+<section class="tela" id="tela-obrigado" data-tela="obrigado" aria-labelledby="t4" hidden>
+  <header class="topo">
+    <img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!">
+    <img class="logo-senac" src="img/img-2.png" alt="Senac">
+  </header>
+  <div class="conteudo">
+    <div class="intro">
+      <h2 id="t4">Obrigado por fazer parte!</h2>
+      <p class="sub">Sua música vai fazer parte da playlist colaborativa do Senac EAD.</p>
+    </div>
+    <div class="painel">
+    <article class="cartao" id="cartao">
+      <h3 id="cartao-titulo">A música da minha conquista é</h3>
+      <div class="capa" id="cartao-capa"></div>
+      <p class="musica" id="cartao-musica"></p>
+      <p class="artista" id="cartao-artista"></p>
+    </article>
+    </div>
+    <div class="compartilhar">
+    <p class="compartilhe">Compartilhe</p>
+    <div class="redes">
+      <button type="button" id="share-instagram" aria-label="Compartilhar no Instagram">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <a id="share-facebook" target="_blank" rel="noopener" aria-label="Compartilhar no Facebook">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 8.5V6.6c0-.9.6-1.1 1-1.1h2.6V1.5L14 1.5c-4 0-4.9 3-4.9 4.9v2.1H6.8v4.1h2.3V23H14V12.6h3.3l.4-4.1H14Z"/></svg>
+      </a>
+      <a id="share-whatsapp" target="_blank" rel="noopener" aria-label="Compartilhar no WhatsApp">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 20.5 4.7 16A8.5 8.5 0 1 1 8 19.3l-4.5 1.2Z"/><path d="M9 8.3c.2-.4.5-.4.8-.4h.4c.2 0 .4.1.5.4l.6 1.5c.1.2 0 .4-.1.6l-.5.6c.6 1.2 1.6 2.2 2.8 2.8l.6-.5c.2-.2.4-.2.6-.1l1.5.6c.3.1.4.3.4.5v.4c0 .3 0 .6-.4.8-.6.4-1.5.6-2.4.2a8.6 8.6 0 0 1-4.5-4.5c-.4-.9-.2-1.8.2-2.4Z" fill="currentColor" stroke="none"/></svg>
+      </a>
+    </div>
+    <button class="link-continuar" type="button" data-ir="mural">
+      Continuar
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+    </div>
+  </div>
+  <p class="aviso" id="aviso" role="status" hidden></p>
+</section>
+
+<!-- ============ TELA 5 · Mural ============ -->
+<section class="tela" id="tela-mural" data-tela="mural" aria-labelledby="t5" hidden>
+  <header class="topo">
+    <img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!">
+    <img class="logo-senac" src="img/img-2.png" alt="Senac">
+  </header>
+  <div class="conteudo">
+    <div class="intro intro-mural">
+      <h2 id="t5">Mural de conquistas</h2>
+      <p>Veja quem já escolheu a música da sua conquista.</p>
+    </div>
+    <div class="mural">
+      <ul class="notas" id="notas"></ul>
+    </div>
+    <div class="acoes">
+      <a class="btn" id="link-playlist" target="_blank" rel="noopener">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="flex:none"><path d="M12 0a12 12 0 1 0 0 24 12 12 0 0 0 0-24Zm5.5 17.3a.75.75 0 0 1-1 .25c-2.85-1.74-6.43-2.13-10.66-1.17a.75.75 0 1 1-.33-1.46c4.62-1.06 8.6-.6 11.74 1.33.36.22.47.69.25 1.05Zm1.47-3.27a.94.94 0 0 1-1.29.3c-3.26-2-8.23-2.58-12.09-1.41a.94.94 0 0 1-.54-1.8c4.4-1.33 9.88-.68 13.62 1.62.44.27.58.85.3 1.29Zm.13-3.4C15.18 8.3 8.73 8.08 5 9.21a1.12 1.12 0 1 1-.65-2.15c4.28-1.3 11.4-1.05 15.9 1.62a1.12 1.12 0 0 1-1.15 1.93Z"/></svg>
+        <span class="rotulo-btn">Escute a playlist da minha conquista</span>
+      </a>
+      <a class="btn btn-contorno" href="https://ead.senac.br" target="_blank" rel="noopener">
+        <span class="rotulo-btn">Conheça o Senac EAD<small>ead.senac.br</small></span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ================= Configuração ================= */
+const CONFIG = {
+  playlistUrl: "https://open.spotify.com/playlist/COLOQUE_O_ID_AQUI", // playlist colaborativa
+  urlCampanha: location.origin,                                     // link usado ao compartilhar
+};
+
+/* Exemplos usados só se a API do mural não responder */
+const EXEMPLOS = [
+  { nome: "Ana",   tipo: "conquista",   musica: { nome: "Tempos Modernos" } },
+  { nome: "Carlos", tipo: "dedicatoria", amigo: "Júlia",  musica: { nome: "Velha Infância" } },
+  { nome: "Bia",   tipo: "dedicatoria", amigo: "Pedro",  musica: { nome: "Trem-Bala" } },
+  { nome: "Rafa",  tipo: "conquista",   musica: { nome: "Vou Festejar" } },
+  { nome: "Luísa", tipo: "conquista",   musica: { nome: "O Sol" } },
+  { nome: "João",  tipo: "dedicatoria", amigo: "Marina", musica: { nome: "Sá Marina" } },
+];
+
+/* ================= Estado ================= */
+const estado = { nome: "", email: "", tipo: "conquista", amigo: "", aceite: false, musica: null, participacao: null };
+
+const $ = s => document.querySelector(s);
+const esc = (s = "") => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const primeiroNome = s => (s || "").trim().split(/\s+/)[0];
+
+/* ================= Navegação ================= */
+const telas = [...document.querySelectorAll(".tela")];
+const requisitos = { // impede pular etapas ao usar voltar/avançar do navegador
+  musica: () => estado.nome && estado.email,
+  obrigado: () => estado.participacao,
+  mural: () => true,
+};
+
+function mostrar(nome, { empilhar = true } = {}) {
+  if (requisitos[nome] && !requisitos[nome]()) nome = "inicio";
+  telas.forEach(t => (t.hidden = t.dataset.tela !== nome));
+  if (empilhar) history.pushState({ tela: nome }, "", `#${nome}`);
+  window.scrollTo(0, 0);
+  const atual = document.querySelector(`[data-tela="${nome}"]`);
+  atual.querySelector("h1, h2")?.setAttribute("tabindex", "-1");
+  if (nome === "musica") $("#q").focus(); else atual.querySelector("h1, h2")?.focus({ preventScroll: true });
+  if (nome === "obrigado") montarCartao();
+  if (nome === "mural") carregarMural();
+}
+
+document.addEventListener("click", e => {
+  const alvo = e.target.closest("[data-ir]");
+  if (alvo) mostrar(alvo.dataset.ir);
+});
+window.addEventListener("popstate", e => mostrar(e.state?.tela || "inicio", { empilhar: false }));
+
+/* ================= Tela 2 · Formulário ================= */
+const form = $("#form-dados");
+const campoAmigo = $("#campo-amigo");
+const inputAmigo = $("#amigo");
+
+form.addEventListener("change", e => {
+  if (e.target.name !== "tipo") return;
+  const dedicatoria = e.target.value === "dedicatoria";
+  campoAmigo.hidden = !dedicatoria;
+  inputAmigo.required = dedicatoria;
+  if (dedicatoria) inputAmigo.focus(); else marcarErro(inputAmigo, "");
+});
+
+function marcarErro(campo, msg) {
+  campo.setAttribute("aria-invalid", msg ? "true" : "false");
+  $(`#erro-${campo.id}`).textContent = msg;
+}
+
+function validar() {
+  const regras = [
+    [$("#nome"), v => v.trim().length >= 2 || "Informe seu nome."],
+    [$("#email"), v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) || "Informe um e-mail válido, como nome@email.com."],
+    [inputAmigo, v => !inputAmigo.required || v.trim().length >= 2 || "Informe o nome de quem vai receber a dedicatória."],
+    [$("#aceite"), (_, c) => c.checked || "Aceite os termos para continuar."],
+  ];
+  let primeiro = null;
+  for (const [campo, regra] of regras) {
+    const r = regra(campo.value, campo);
+    marcarErro(campo, r === true ? "" : r);
+    if (r !== true && !primeiro) primeiro = campo;
+  }
+  primeiro?.focus();
+  return !primeiro;
+}
+
+form.addEventListener("input", e => { if (e.target.getAttribute("aria-invalid") === "true") marcarErro(e.target, ""); });
+
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  if (!validar()) return;
+  const dados = new FormData(form);
+  Object.assign(estado, {
+    nome: dados.get("nome").trim(),
+    email: dados.get("email").trim(),
+    tipo: dados.get("tipo"),
+    amigo: dados.get("tipo") === "dedicatoria" ? dados.get("amigo").trim() : "",
+    aceite: true,
+  });
+  mostrar("musica");
+});
+
+/* ================= Tela 3 · Busca no Spotify ================= */
+const inputBusca = $("#q");
+const lista = $("#resultados");
+const statusBusca = $("#status");
+const btnConfirmar = $("#confirmar");
+const iconeNota = `<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 18.5a3 3 0 1 1-2-2.83V5.5l12-2.5v12.5a3 3 0 1 1-2-2.83V7.2l-8 1.67v9.63Z"/></svg>`;
+const iconeCheck = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>`;
+let timer, controlador, resultadosAtuais = [];
+
+function carregando() {
+  lista.innerHTML = Array.from({ length: 3 }, () => `<li class="esqueleto" aria-hidden="true"></li>`).join("");
+}
+
+function renderizarResultados(musicas, termo) {
+  resultadosAtuais = musicas;
+  if (!musicas.length) {
+    statusBusca.textContent = "";
+    lista.innerHTML = `<li class="vazio"><strong>Nada encontrado para “${esc(termo)}”</strong>Confira a grafia ou tente só o nome do artista.</li>`;
+    return;
+  }
+  statusBusca.textContent = "";
+  lista.innerHTML = musicas.map(m => `
+    <li>
+      <label class="opcao">
+        <input type="radio" name="musica" value="${esc(m.id)}"${estado.musica?.id === m.id ? " checked" : ""}>
+        <span class="capinha">${m.capa ? `<img src="${esc(m.capa)}" alt="" loading="lazy">` : iconeNota}</span>
+        <span class="faixa-txt"><strong>${esc(m.nome)}</strong><small>${esc(m.artistas)}</small></span>
+        <span class="marca">${iconeCheck}</span>
+      </label>
+    </li>`).join("");
+}
+
+async function buscar(termo) {
+  controlador?.abort();
+  controlador = new AbortController();
+  carregando();
+  statusBusca.textContent = "Buscando…";
+  try {
+    const r = await fetch(`/api/buscar?q=${encodeURIComponent(termo)}`, { signal: controlador.signal });
+    const dados = await r.json();
+    if (!r.ok) throw new Error(dados.erro || "Erro na busca.");
+    renderizarResultados(dados, termo);
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    lista.innerHTML = "";
+    statusBusca.textContent = `${e.message || "Sem conexão com o servidor."} Tente de novo em instantes.`;
+  }
+}
+
+inputBusca.addEventListener("input", () => {
+  const termo = inputBusca.value.trim();
+  clearTimeout(timer);
+  if (!termo) { controlador?.abort(); lista.innerHTML = ""; statusBusca.textContent = ""; return; }
+  timer = setTimeout(() => buscar(termo), 300);
+});
+
+lista.addEventListener("change", e => {
+  if (e.target.name !== "musica") return;
+  estado.musica = resultadosAtuais.find(m => m.id === e.target.value) || null;
+  btnConfirmar.disabled = !estado.musica;
+  $("#erro-envio").textContent = "";
+});
+
+btnConfirmar.addEventListener("click", async () => {
+  if (!estado.musica) return;
+  btnConfirmar.disabled = true;
+  btnConfirmar.textContent = "Enviando…";
+  $("#erro-envio").textContent = "";
+  try {
+    const r = await fetch("/api/participacoes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nome: estado.nome, email: estado.email, tipo: estado.tipo,
+        amigo: estado.amigo, aceite: estado.aceite, musicaId: estado.musica.id,
+      }),
+    });
+    const dados = await r.json();
+    if (!r.ok) throw new Error(dados.erro);
+    estado.participacao = dados;
+    mostrar("obrigado");
+  } catch (e) {
+    $("#erro-envio").textContent = `${e.message || "Não foi possível enviar."} Tente de novo.`;
+  } finally {
+    btnConfirmar.disabled = !estado.musica;
+    btnConfirmar.textContent = "Confirmar música";
+  }
+});
+
+/* ================= Tela 4 · Cartão ================= */
+function textoCompartilhar() {
+  const m = estado.musica;
+  const quem = estado.tipo === "dedicatoria" ? `da conquista de ${primeiroNome(estado.amigo)}` : "da minha conquista";
+  return `A música ${quem} é “${m.nome}”, de ${m.artistas}. Escolha a sua também:`;
+}
+
+function montarCartao() {
+  const m = estado.musica;
+  $("#cartao-titulo").textContent = estado.tipo === "dedicatoria"
+    ? `A música da conquista de ${primeiroNome(estado.amigo)} é`
+    : "A música da minha conquista é";
+  $("#cartao-capa").innerHTML = m.capa
+    ? `<img src="${esc(m.capa)}" alt="Capa do álbum ${esc(m.album || "")}">`
+    : `<img class="logo-na-capa" src="img/img-1.png" alt="">`;
+  $("#cartao-musica").textContent = m.nome;
+  $("#cartao-artista").textContent = m.artistas;
+
+  const url = CONFIG.urlCampanha;
+  $("#share-facebook").href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+  $("#share-whatsapp").href = `https://wa.me/?text=${encodeURIComponent(`${textoCompartilhar()} ${url}`)}`;
+}
+
+let avisoTimer;
+function avisar(msg) {
+  const a = $("#aviso");
+  a.textContent = msg; a.hidden = false;
+  clearTimeout(avisoTimer); avisoTimer = setTimeout(() => (a.hidden = true), 3500);
+}
+
+// O Instagram não tem link de compartilhamento na web: usa o menu nativo do celular ou copia o texto
+$("#share-instagram").addEventListener("click", async () => {
+  const texto = `${textoCompartilhar()} ${CONFIG.urlCampanha}`;
+  if (navigator.share) {
+    try { await navigator.share({ text: texto, url: CONFIG.urlCampanha }); } catch {}
+    return;
+  }
+  try { await navigator.clipboard.writeText(texto); avisar("Texto copiado. Cole nos stories ou na legenda do Instagram."); }
+  catch { avisar("Não foi possível copiar. Tire um print do cartão para postar."); }
+});
+
+/* ================= Tela 5 · Mural ================= */
+$("#link-playlist").href = CONFIG.playlistUrl;
+
+/**
+ * Monta um card do mural. Aceita qualquer participação no formato:
+ * { nome, tipo: "conquista" | "dedicatoria", amigo?, musica: { nome } }
+ */
+function cardMural(p, { nova = false } = {}) {
+  const nome = `<b>${esc(primeiroNome(p.nome))}</b>`;
+  const musica = `<b>${esc(p.musica?.nome)}</b>`;
+  const texto = p.tipo === "dedicatoria"
+    ? `Eu sou ${nome}, e a música ${musica} marcou a conquista de <b>${esc(primeiroNome(p.amigo))}</b>.`
+    : `Eu sou ${nome} e a música ${musica} marcou minha conquista.`;
+  return `<li class="nota${nova ? " nova" : ""}">${texto}${nova ? '<span class="selo">Sua</span>' : ""}</li>`;
+}
+
+function renderizarMural(participacoes) {
+  const minha = estado.participacao;
+  const outras = participacoes.filter(p => p.id !== minha?.id);
+  $("#notas").innerHTML = (minha ? cardMural(minha, { nova: true }) : "") + outras.map(p => cardMural(p)).join("");
+}
+
+async function carregarMural() {
+  renderizarMural(EXEMPLOS); // mostra algo na hora
+  try {
+    const r = await fetch("/api/participacoes");
+    if (!r.ok) throw new Error();
+    const dados = await r.json();
+    if (dados.length) renderizarMural(dados);
+  } catch { /* mantém os exemplos */ }
+}
+
+/* ================= Início ================= */
+history.replaceState({ tela: "inicio" }, "", location.pathname);
+</script>
+</body>
+</html>

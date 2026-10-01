@@ -1,3 +1,4 @@
+import cors from "cors";
 import express from "express";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -9,6 +10,9 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
 }
 
 const app = express();
+app.use(cors({
+  origin: "https://fabiomrqs.github.io"
+}));
 app.use(express.json({ limit: "20kb" }));
 app.use(express.static("public"));
 

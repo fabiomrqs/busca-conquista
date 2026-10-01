@@ -452,8 +452,9 @@
 <script>
 /* ================= Configuração ================= */
 const CONFIG = {
-  playlistUrl: "https://open.spotify.com/playlist/COLOQUE_O_ID_AQUI", // playlist colaborativa
-  urlCampanha: location.origin,                                     // link usado ao compartilhar
+  apiUrl: "https://busca-conquista.onrender.com",
+  playlistUrl: "https://open.spotify.com/playlist/COLOQUE_O_ID_AQUI",
+  urlCampanha: location.origin,
 };
 
 /* Exemplos usados só se a API do mural não responder */
@@ -588,7 +589,9 @@ async function buscar(termo) {
   carregando();
   statusBusca.textContent = "Buscando…";
   try {
-    const r = await fetch(`/api/buscar?q=${encodeURIComponent(termo)}`, { signal: controlador.signal });
+    const r = await fetch(`${CONFIG.apiUrl}/api/buscar?q=${encodeURIComponent(termo)}`, {
+  signal: controlador.signal
+});
     const dados = await r.json();
     if (!r.ok) throw new Error(dados.erro || "Erro na busca.");
     renderizarResultados(dados, termo);
@@ -619,7 +622,7 @@ btnConfirmar.addEventListener("click", async () => {
   btnConfirmar.textContent = "Enviando…";
   $("#erro-envio").textContent = "";
   try {
-    const r = await fetch("/api/participacoes", {
+    const r = await fetch(`${CONFIG.apiUrl}/api/participacoes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -705,7 +708,7 @@ function renderizarMural(participacoes) {
 async function carregarMural() {
   renderizarMural(EXEMPLOS); // mostra algo na hora
   try {
-    const r = await fetch("/api/participacoes");
+    const r = await fetch(`${CONFIG.apiUrl}/api/participacoes`);
     if (!r.ok) throw new Error();
     const dados = await r.json();
     if (dados.length) renderizarMural(dados);

@@ -1,13 +1,18 @@
 import cors from "cors";
 import express from "express";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 
-const { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, PORT = 3000 } = process.env;
-if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-  console.error("Defina SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no arquivo .env");
+const { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, DATABASE_URL, PORT = 3000 } = process.env;
+if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET || !DATABASE_URL) {
+  console.error("Defina SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET e DATABASE_URL no arquivo .env");
   process.exit(1);
 }
+
+// Conexão com o PostgreSQL. A URL vem do provedor (Neon, Supabase, Render...)
+// e normalmente já inclui ?sslmode=require.
+const db = new pg.Pool({ connectionString: DATABASE_URL, max: 5 });
 
 const app = express();
 app.use(cors({
@@ -65,10 +70,7 @@ app.get("/api/buscar", async (req, res) => {
 });
 
 /* ---------------- Participações (mural) ----------------
-   Guardadas em data/participacoes.json. Para produção, troque
-   lerTodas/salvarTodas por um banco de dados. */
-
-const ARQUIVO = "data/participacoes.json";
+   Guardadas na tabela "participacoes" do PostgreSQL. */
 
 const EXEMPLOS = [
   ["Ana", "conquista", null, "Tempos Modernos", "Lulu Santos"],
@@ -84,27 +86,71 @@ const EXEMPLOS = [
   criadoEm: new Date(Date.UTC(2026, 8, 1 + i)).toISOString(),
 }));
 
-async function lerTodas() {
+async function inserir(p) {
+  await db.query(
+    `INSERT INTO participacoes
+       (id, nome, email, tipo, amigo, musica_id, musica_nome, musica_artistas, musica_capa, musica_link, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     ON CONFLICT (id) DO NOTHING`,
+    [p.id, p.nome, p.email, p.tipo, p.amigo, p.musica.id, p.musica.nome,
+     p.musica.artistas, p.musica.capa, p.musica.link, p.criadoEm],
+  );
+}
+
+// Cria a tabela se ainda não existir. Se estiver vazia, importa o antigo
+// data/participacoes.json (quando houver) ou, senão, os 6 exemplos.
+async function prepararBanco() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS participacoes (
+      id              TEXT PRIMARY KEY,
+      nome            TEXT NOT NULL,
+      email           TEXT,
+      tipo            TEXT NOT NULL CHECK (tipo IN ('conquista', 'dedicatoria')),
+      amigo           TEXT,
+      musica_id       TEXT,
+      musica_nome     TEXT NOT NULL,
+      musica_artistas TEXT,
+      musica_capa     TEXT,
+      musica_link     TEXT,
+      criado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS participacoes_criado_em ON participacoes (criado_em DESC);
+  `);
+
+  const { rows } = await db.query("SELECT count(*)::int AS total FROM participacoes");
+  if (rows[0].total > 0) return;
+
+  let iniciais = EXEMPLOS;
   try {
-    return JSON.parse(await readFile(ARQUIVO, "utf8"));
-  } catch {
-    await salvarTodas(EXEMPLOS);
-    return [...EXEMPLOS];
-  }
+    iniciais = JSON.parse(await readFile("data/participacoes.json", "utf8"));
+    console.log(`Importando ${iniciais.length} participações de data/participacoes.json`);
+  } catch { /* sem arquivo antigo: usa os exemplos */ }
+  for (const p of iniciais) await inserir(p);
 }
 
-async function salvarTodas(lista) {
-  await mkdir("data", { recursive: true });
-  await writeFile(ARQUIVO, JSON.stringify(lista, null, 2));
-}
-
-// Só dados públicos vão para o mural (o e-mail nunca sai do servidor)
-const publico = ({ email, ...p }) => p;
+// Linha do banco → formato que o front-end já usa (sem e-mail)
+const publico = (r) => ({
+  id: r.id,
+  nome: r.nome,
+  tipo: r.tipo,
+  amigo: r.amigo,
+  musica: { id: r.musica_id, nome: r.musica_nome, artistas: r.musica_artistas, capa: r.musica_capa, link: r.musica_link },
+  criadoEm: new Date(r.criado_em).toISOString(),
+});
 const primeiroNome = (s) => s.trim().split(/\s+/)[0];
 
 app.get("/api/participacoes", async (_req, res) => {
-  const lista = await lerTodas();
-  res.json(lista.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).slice(0, 100).map(publico));
+  try {
+    // O e-mail nunca entra no SELECT, então nunca sai do servidor
+    const { rows } = await db.query(
+      `SELECT id, nome, tipo, amigo, musica_id, musica_nome, musica_artistas, musica_capa, musica_link, criado_em
+       FROM participacoes ORDER BY criado_em DESC LIMIT 100`,
+    );
+    res.json(rows.map(publico));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ erro: "Não foi possível carregar o mural agora." });
+  }
 });
 
 app.post("/api/participacoes", async (req, res) => {
@@ -135,15 +181,21 @@ app.post("/api/participacoes", async (req, res) => {
       musica: { id: f.id, nome: f.nome, artistas: f.artistas, capa: f.capa, link: f.link },
       criadoEm: new Date().toISOString(),
     };
-    const lista = await lerTodas();
-    lista.push(nova);
-    await salvarTodas(lista);
-    res.status(201).json(publico(nova));
+    await inserir(nova);
+    const { email: _, ...semEmail } = nova;
+    res.status(201).json(semEmail);
   } catch (e) {
     console.error(e);
     res.status(500).json({ erro: "Não foi possível salvar sua participação agora." });
   }
 });
+
+try {
+  await prepararBanco();
+} catch (e) {
+  console.error("Não foi possível conectar ao banco de dados:", e.message);
+  process.exit(1);
+}
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor rodando na porta ${PORT}`);

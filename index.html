@@ -78,6 +78,29 @@
   #tela-inicio .acoes { margin-top: 2.5rem; padding: 0 .5rem; }
   #tela-inicio .rodape { margin-top: auto; }
 
+  /* Menu da tela inicial */
+  .menu { position: absolute; z-index: 2; text-align: left;
+    top: calc(1.25rem + env(safe-area-inset-top, 0px)); right: 1.25rem; }
+  .menu-botao {
+    display: flex; align-items: center; justify-content: center; width: 48px; height: 48px;
+    border: 2px solid var(--marinho); border-radius: 999px; background: #fff; color: var(--marinho); cursor: pointer;
+  }
+  .menu-botao:hover, .menu-botao[aria-expanded="true"] { background: var(--azul-claro); }
+  .menu-botao .fechar, .menu-botao[aria-expanded="true"] .abrir { display: none; }
+  .menu-botao[aria-expanded="true"] .fechar { display: block; }
+  .menu-lista {
+    position: absolute; right: 0; top: calc(100% + .5rem); min-width: 220px; padding: .4rem; list-style: none;
+    background: #fff; border: 2px solid var(--borda); border-radius: 16px; box-shadow: 0 12px 30px rgba(29,68,128,.14);
+    animation: abrir .15s ease-out;
+  }
+  .menu-lista[hidden] { display: none; }
+  .menu-lista button {
+    display: block; width: 100%; padding: .8rem 1rem; border: 0; border-radius: 10px; background: none;
+    color: var(--marinho); font-weight: 700; font-size: 1rem; text-align: left; cursor: pointer;
+  }
+  .menu-lista button:hover { background: var(--azul-claro); }
+  @media (max-width: 379px) { #tela-inicio .logo-campanha { width: 180px; } } /* evita encostar no botão do menu */
+
   /* ---------- Formulários ---------- */
   .grupo { margin-bottom: 1rem; }
   .rotulo { display: block; color: var(--marinho); font-weight: 700; font-size: .95rem; margin-bottom: .35rem; }
@@ -244,6 +267,7 @@
     /* Tela 1 */
     #tela-inicio::before { left: 50%; top: 1rem; width: 820px; }
     #tela-inicio .topo { padding-top: 2.5rem; }
+    .menu { top: 2.5rem; right: clamp(2.5rem, 5vw, 4rem); }
     #tela-inicio .logo-campanha { width: 320px; }
     #tela-inicio h1 { font-size: clamp(3.2rem, 5vw, 4.4rem); max-width: 12em; margin: 2.75rem auto 1.5rem; }
     #tela-inicio .chamada { font-size: 1.3rem; max-width: 28em; }
@@ -291,6 +315,16 @@
 
 <!-- ============ TELA 1 · Início ============ -->
 <section class="tela" id="tela-inicio" data-tela="inicio" aria-labelledby="t1">
+  <nav class="menu" aria-label="Menu">
+    <button class="menu-botao" id="menu-botao" type="button" aria-expanded="false" aria-controls="menu-lista" aria-label="Abrir menu">
+      <svg class="abrir" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      <svg class="fechar" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <ul class="menu-lista" id="menu-lista" hidden>
+      <li><button type="button" data-ir="dados">Quero participar</button></li>
+      <li><button type="button" data-ir="mural">Ver o mural</button></li>
+    </ul>
+  </nav>
   <header class="topo">
     <img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!">
   </header>
@@ -357,8 +391,8 @@
   <header class="topo"><img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!"></header>
   <div class="conteudo">
     <div class="intro">
-      <h2 id="t3">Qual música marcou essa conquista?</h2>
-      <p class="so-desktop">Busque pelo nome da música ou do artista e escolha a versão certa.</p>
+      <h2 id="t3">Toda conquista tem uma música. Qual é a sua?</h2>
+      <p class="so-desktop">Escolha a música que marcou uma conquista da sua vida ou dedique essa música a quem fez parte dela.</p>
     </div>
     <div class="painel">
     <div class="busca" role="search">
@@ -385,7 +419,6 @@
 <section class="tela" id="tela-obrigado" data-tela="obrigado" aria-labelledby="t4" hidden>
   <header class="topo">
     <img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!">
-    <img class="logo-senac" src="img/img-2.png" alt="Senac">
   </header>
   <div class="conteudo">
     <div class="intro">
@@ -419,6 +452,7 @@
     </button>
     </div>
   </div>
+  <footer class="rodape"><img class="logo-senac" src="img/img-2.png" alt="Senac"></footer>
   <p class="aviso" id="aviso" role="status" hidden></p>
 </section>
 
@@ -426,7 +460,6 @@
 <section class="tela" id="tela-mural" data-tela="mural" aria-labelledby="t5" hidden>
   <header class="topo">
     <img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!">
-    <img class="logo-senac" src="img/img-2.png" alt="Senac">
   </header>
   <div class="conteudo">
     <div class="intro intro-mural">
@@ -447,6 +480,7 @@
       </a>
     </div>
   </div>
+  <footer class="rodape"><img class="logo-senac" src="img/img-2.png" alt="Senac"></footer>
 </section>
 
 <script>
@@ -497,6 +531,24 @@ function mostrar(nome, { empilhar = true } = {}) {
 document.addEventListener("click", e => {
   const alvo = e.target.closest("[data-ir]");
   if (alvo) mostrar(alvo.dataset.ir);
+});
+
+/* Menu da tela inicial */
+const menuBotao = $("#menu-botao");
+const menuLista = $("#menu-lista");
+function alternarMenu(abrir = menuLista.hidden) {
+  menuLista.hidden = !abrir;
+  menuBotao.setAttribute("aria-expanded", abrir);
+  menuBotao.setAttribute("aria-label", abrir ? "Fechar menu" : "Abrir menu");
+  if (abrir) menuLista.querySelector("button").focus();
+}
+menuBotao.addEventListener("click", () => alternarMenu());
+document.addEventListener("click", e => {
+  // fecha ao escolher uma opção ou clicar fora do menu
+  if (!menuLista.hidden && (e.target.closest("#menu-lista [data-ir]") || !e.target.closest(".menu"))) alternarMenu(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !menuLista.hidden) { alternarMenu(false); menuBotao.focus(); }
 });
 window.addEventListener("popstate", e => mostrar(e.state?.tela || "inicio", { empilhar: false }));
 
@@ -686,22 +738,59 @@ $("#share-instagram").addEventListener("click", async () => {
 /* ================= Tela 5 · Mural ================= */
 $("#link-playlist").href = CONFIG.playlistUrl;
 
+/* Variações das mensagens do mural.
+   {nome}, {musica} e {amigo} são trocados pelos valores (já escapados e em negrito).
+   Para adicionar uma nova frase, é só incluir mais uma linha na lista certa. */
+const FRASES = {
+  conquista: [
+    "{nome} escolheu {musica} para celebrar sua conquista.",
+    "A trilha da conquista de {nome} foi {musica}.",
+    "Eu sou {nome} e a música {musica} marcou minha conquista.",
+    "{musica} é a música que embala a conquista de {nome}.",
+  ],
+  dedicatoria: [
+    "{nome} dedicou {musica} à conquista de {amigo}.",
+    "Para celebrar a conquista de {amigo}, {nome} escolheu {musica}.",
+    "Eu sou {nome}, e a música {musica} marcou a conquista de {amigo}.",
+    "{nome} escolheu {musica} como trilha da conquista de {amigo}.",
+  ],
+};
+
+/* Guarda a frase sorteada para cada card. Assim o texto não "pula" quando o
+   mural é redesenhado (exemplos → dados da API), e cards vizinhos não repetem a mesma frase. */
+const fraseDoCard = new Map();
+let ultimaFrase = { conquista: -1, dedicatoria: -1 };
+
+function sortearFrase(p) {
+  const tipo = p.tipo === "dedicatoria" ? "dedicatoria" : "conquista";
+  const chave = p.id || `${p.nome}|${p.amigo || ""}|${p.musica?.nome}`;
+  if (!fraseDoCard.has(chave)) {
+    const total = FRASES[tipo].length;
+    let i = Math.floor(Math.random() * total);
+    if (total > 1 && i === ultimaFrase[tipo]) i = (i + 1 + Math.floor(Math.random() * (total - 1))) % total;
+    ultimaFrase[tipo] = i;
+    fraseDoCard.set(chave, i);
+  }
+  return FRASES[tipo][fraseDoCard.get(chave)];
+}
+
 /**
  * Monta um card do mural. Aceita qualquer participação no formato:
  * { nome, tipo: "conquista" | "dedicatoria", amigo?, musica: { nome } }
  */
 function cardMural(p, { nova = false } = {}) {
-  const nome = `<b>${esc(primeiroNome(p.nome))}</b>`;
-  const musica = `<b>${esc(p.musica?.nome)}</b>`;
-  const texto = p.tipo === "dedicatoria"
-    ? `Eu sou ${nome}, e a música ${musica} marcou a conquista de <b>${esc(primeiroNome(p.amigo))}</b>.`
-    : `Eu sou ${nome} e a música ${musica} marcou minha conquista.`;
+  const valores = {
+    nome: `<b>${esc(primeiroNome(p.nome))}</b>`,
+    musica: `<b>${esc(p.musica?.nome)}</b>`,
+    amigo: `<b>${esc(primeiroNome(p.amigo || ""))}</b>`,
+  };
+  const texto = sortearFrase(p).replace(/\{(nome|musica|amigo)\}/g, (_, k) => valores[k]);
   return `<li class="nota${nova ? " nova" : ""}">${texto}${nova ? '<span class="selo">Sua</span>' : ""}</li>`;
 }
 
 function renderizarMural(participacoes) {
   const minha = estado.participacao;
-  const outras = participacoes.filter(p => p.id !== minha?.id);
+  const outras = participacoes.filter(p => !minha || p.id !== minha.id);
   $("#notas").innerHTML = (minha ? cardMural(minha, { nova: true }) : "") + outras.map(p => cardMural(p)).join("");
 }
 

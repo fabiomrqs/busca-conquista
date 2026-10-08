@@ -1,12 +1,18 @@
 import cors from "cors";
 import express from "express";
 import { readFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
+import ExcelJS from "exceljs";
 import pg from "pg";
 
-const { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, DATABASE_URL, PORT = 3000 } = process.env;
-if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET || !DATABASE_URL) {
-  console.error("Defina SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET e DATABASE_URL no arquivo .env");
+const {
+  SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, DATABASE_URL,
+  ADMIN_USUARIO, ADMIN_SENHA, ADMIN_SEGREDO, PORT = 3000,
+} = process.env;
+const faltando = ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "DATABASE_URL", "ADMIN_USUARIO", "ADMIN_SENHA", "ADMIN_SEGREDO"]
+  .filter((k) => !process.env[k]);
+if (faltando.length) {
+  console.error(`Defina as variáveis de ambiente: ${faltando.join(", ")}`);
   process.exit(1);
 }
 
@@ -15,6 +21,7 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET || !DATABASE_URL) {
 const db = new pg.Pool({ connectionString: DATABASE_URL, max: 5 });
 
 const app = express();
+app.set("trust proxy", 1); // o Render fica na frente do servidor (IP real e HTTPS)
 app.use(cors({
   origin: "https://fabiomrqs.github.io"
 }));
@@ -86,13 +93,24 @@ const EXEMPLOS = [
   criadoEm: new Date(Date.UTC(2026, 8, 1 + i)).toISOString(),
 }));
 
+// Estados e regiões (para o campo do formulário e os filtros do admin)
+const REGIOES = {
+  Norte: ["AC", "AP", "AM", "PA", "RO", "RR", "TO"],
+  Nordeste: ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"],
+  "Centro-Oeste": ["DF", "GO", "MT", "MS"],
+  Sudeste: ["ES", "MG", "RJ", "SP"],
+  Sul: ["PR", "RS", "SC"],
+};
+const UFS = Object.values(REGIOES).flat();
+const regiaoDaUf = (uf) => Object.keys(REGIOES).find((r) => REGIOES[r].includes(uf)) || null;
+
 async function inserir(p) {
   await db.query(
     `INSERT INTO participacoes
-       (id, nome, email, tipo, amigo, musica_id, musica_nome, musica_artistas, musica_capa, musica_link, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       (id, nome, email, tipo, amigo, uf, musica_id, musica_nome, musica_artistas, musica_capa, musica_link, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (id) DO NOTHING`,
-    [p.id, p.nome, p.email, p.tipo, p.amigo, p.musica.id, p.musica.nome,
+    [p.id, p.nome, p.email, p.tipo, p.amigo, p.uf || null, p.musica.id, p.musica.nome,
      p.musica.artistas, p.musica.capa, p.musica.link, p.criadoEm],
   );
 }
@@ -115,6 +133,8 @@ async function prepararBanco() {
       criado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS participacoes_criado_em ON participacoes (criado_em DESC);
+    -- coluna adicionada depois: bancos criados antes recebem ela aqui
+    ALTER TABLE participacoes ADD COLUMN IF NOT EXISTS uf TEXT;
   `);
 
   const { rows } = await db.query("SELECT count(*)::int AS total FROM participacoes");
@@ -154,12 +174,13 @@ app.get("/api/participacoes", async (_req, res) => {
 });
 
 app.post("/api/participacoes", async (req, res) => {
-  const { nome = "", email = "", tipo, amigo = "", aceite, musicaId = "" } = req.body || {};
+  const { nome = "", email = "", tipo, amigo = "", uf = "", aceite, musicaId = "" } = req.body || {};
   const erros = [];
   if (nome.trim().length < 2) erros.push("nome");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) erros.push("email");
   if (!["conquista", "dedicatoria"].includes(tipo)) erros.push("tipo");
   if (tipo === "dedicatoria" && amigo.trim().length < 2) erros.push("amigo");
+  if (!UFS.includes(uf)) erros.push("uf");
   if (aceite !== true) erros.push("aceite");
   if (!/^[A-Za-z0-9]{22}$/.test(musicaId)) erros.push("musica");
   if (erros.length) return res.status(400).json({ erro: "Dados incompletos.", campos: erros });
@@ -178,15 +199,202 @@ app.post("/api/participacoes", async (req, res) => {
       email: email.trim().toLowerCase(),
       tipo,
       amigo: tipo === "dedicatoria" ? primeiroNome(amigo).slice(0, 30) : null,
+      uf,
       musica: { id: f.id, nome: f.nome, artistas: f.artistas, capa: f.capa, link: f.link },
       criadoEm: new Date().toISOString(),
     };
     await inserir(nova);
-    const { email: _, ...semEmail } = nova;
+    const { email: _e, uf: _u, ...semEmail } = nova;
     res.status(201).json(semEmail);
   } catch (e) {
     console.error(e);
     res.status(500).json({ erro: "Não foi possível salvar sua participação agora." });
+  }
+});
+
+/* ---------------- Admin ----------------
+   Login simples com um usuário e senha definidos nas variáveis de ambiente.
+   Depois do login, o navegador recebe um cookie assinado válido por 8 horas. */
+
+const COOKIE = "admin_sessao";
+const DURACAO_SESSAO = 8 * 60 * 60 * 1000;
+
+const assinar = (texto) => createHmac("sha256", ADMIN_SEGREDO).update(texto).digest("base64url");
+const iguais = (a, b) => {
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+
+function criarSessao() {
+  const expira = String(Date.now() + DURACAO_SESSAO);
+  return `${expira}.${assinar(expira)}`;
+}
+
+function sessaoValida(req) {
+  const cookie = (req.headers.cookie || "").split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`));
+  if (!cookie) return false;
+  const [expira, assinatura] = cookie.slice(COOKIE.length + 1).split(".");
+  return Boolean(expira && assinatura) && iguais(assinatura, assinar(expira)) && Date.now() < Number(expira);
+}
+
+function exigirLogin(req, res, next) {
+  if (sessaoValida(req)) return next();
+  res.status(401).json({ erro: "Faça login novamente." });
+}
+
+// Limita tentativas de senha: 5 erros por IP a cada 15 minutos
+const tentativas = new Map();
+function bloqueado(ip) {
+  const t = tentativas.get(ip);
+  if (!t || Date.now() > t.ate) return false;
+  return t.erros >= 5;
+}
+function registrarErro(ip) {
+  const t = tentativas.get(ip);
+  if (!t || Date.now() > t.ate) tentativas.set(ip, { erros: 1, ate: Date.now() + 15 * 60 * 1000 });
+  else t.erros++;
+}
+
+app.get("/admin", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.sendFile(new URL("./admin.html", import.meta.url).pathname);
+});
+
+app.post("/api/admin/login", (req, res) => {
+  const ip = req.ip;
+  if (bloqueado(ip)) return res.status(429).json({ erro: "Muitas tentativas. Espere 15 minutos." });
+  const { usuario = "", senha = "" } = req.body || {};
+  if (!iguais(usuario, ADMIN_USUARIO) || !iguais(senha, ADMIN_SENHA)) {
+    registrarErro(ip);
+    return res.status(401).json({ erro: "Usuário ou senha incorretos." });
+  }
+  tentativas.delete(ip);
+  res.cookie(COOKIE, criarSessao(), {
+    httpOnly: true, sameSite: "strict", secure: req.secure, maxAge: DURACAO_SESSAO, path: "/",
+  });
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/logout", (_req, res) => {
+  res.clearCookie(COOKIE, { path: "/" });
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/sessao", (req, res) => res.json({ logado: sessaoValida(req) }));
+
+// Monta o WHERE a partir dos filtros da tela (região, estado, tipo e período)
+function filtros(q) {
+  const cond = [], valores = [];
+  const add = (sql, v) => { valores.push(v); cond.push(sql.replace("?", `$${valores.length}`)); };
+
+  if (q.uf === "nao-informado") cond.push("uf IS NULL");
+  else if (UFS.includes(q.uf)) add("uf = ?", q.uf);
+  else if (REGIOES[q.regiao]) add("uf = ANY(?)", REGIOES[q.regiao]);
+
+  if (["conquista", "dedicatoria"].includes(q.tipo)) add("tipo = ?", q.tipo);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(q.de || "")) add("criado_em >= (?::date::timestamp AT TIME ZONE 'America/Sao_Paulo')", q.de);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(q.ate || "")) add("criado_em < ((?::date + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo')", q.ate);
+  if (q.exemplos !== "1") cond.push("id NOT LIKE 'exemplo-%'");
+
+  return { where: cond.length ? `WHERE ${cond.join(" AND ")}` : "", valores };
+}
+
+app.get("/api/admin/metricas", exigirLogin, async (req, res) => {
+  const { where, valores } = filtros(req.query);
+  const hoje = `(now() AT TIME ZONE 'America/Sao_Paulo')::date`;
+  const dia = `(criado_em AT TIME ZONE 'America/Sao_Paulo')::date`;
+  try {
+    const [resumo, porUf, porDia, musicas, artistas, ultimas] = await Promise.all([
+      db.query(`SELECT count(*)::int AS total,
+                       count(*) FILTER (WHERE tipo = 'conquista')::int AS conquistas,
+                       count(*) FILTER (WHERE tipo = 'dedicatoria')::int AS dedicatorias,
+                       count(*) FILTER (WHERE ${dia} = ${hoje})::int AS hoje,
+                       count(*) FILTER (WHERE criado_em > now() - interval '1 hour')::int AS ultima_hora,
+                       count(DISTINCT email)::int AS pessoas
+                FROM participacoes ${where}`, valores),
+      db.query(`SELECT uf, count(*)::int AS total FROM participacoes ${where} GROUP BY uf ORDER BY total DESC`, valores),
+      db.query(`SELECT to_char(${dia}, 'YYYY-MM-DD') AS dia, count(*)::int AS total
+                FROM participacoes ${where ? where + " AND" : "WHERE"} criado_em > now() - interval '30 days'
+                GROUP BY 1 ORDER BY 1`, valores),
+      db.query(`SELECT musica_nome AS nome, musica_artistas AS artistas, count(*)::int AS total
+                FROM participacoes ${where} GROUP BY 1, 2 ORDER BY total DESC, nome LIMIT 10`, valores),
+      db.query(`SELECT musica_artistas AS nome, count(*)::int AS total
+                FROM participacoes ${where} GROUP BY 1 ORDER BY total DESC, nome LIMIT 10`, valores),
+      db.query(`SELECT nome, email, tipo, amigo, uf, musica_nome, musica_artistas, criado_em
+                FROM participacoes ${where} ORDER BY criado_em DESC LIMIT 20`, valores),
+    ]);
+
+    const regioes = Object.fromEntries(Object.keys(REGIOES).map((r) => [r, 0]));
+    let semUf = 0;
+    for (const { uf, total } of porUf.rows) {
+      const r = regiaoDaUf(uf);
+      if (r) regioes[r] += total; else semUf += total;
+    }
+
+    res.json({
+      atualizadoEm: new Date().toISOString(),
+      resumo: resumo.rows[0],
+      porUf: porUf.rows.filter((r) => r.uf),
+      porRegiao: { ...regioes, "Não informado": semUf },
+      porDia: porDia.rows,
+      musicas: musicas.rows,
+      artistas: artistas.rows,
+      ultimas: ultimas.rows,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ erro: "Não foi possível carregar as métricas." });
+  }
+});
+
+app.get("/api/admin/exportar", exigirLogin, async (req, res) => {
+  const formato = req.query.formato === "xlsx" ? "xlsx" : "csv";
+  const { where, valores } = filtros(req.query);
+  try {
+    const { rows } = await db.query(
+      `SELECT * FROM participacoes ${where} ORDER BY criado_em DESC`, valores,
+    );
+    const colunas = [
+      ["Data", (r) => new Date(r.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })],
+      ["Nome", (r) => r.nome],
+      ["E-mail", (r) => r.email || ""],
+      ["Tipo", (r) => (r.tipo === "dedicatoria" ? "Dedicatória" : "Conquista")],
+      ["Dedicada a", (r) => r.amigo || ""],
+      ["Estado", (r) => r.uf || "Não informado"],
+      ["Região", (r) => regiaoDaUf(r.uf) || "Não informado"],
+      ["Música", (r) => r.musica_nome],
+      ["Artistas", (r) => r.musica_artistas || ""],
+      ["Link no Spotify", (r) => r.musica_link || ""],
+    ];
+    const nomeArquivo = `participantes-${new Date().toISOString().slice(0, 10)}.${formato}`;
+    res.set("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
+    res.set("Cache-Control", "no-store");
+
+    if (formato === "csv") {
+      // ";" e BOM para o Excel em português abrir com acentos e colunas certas
+      const celula = (v) => {
+        let t = String(v ?? "");
+        if (/^[=+\-@]/.test(t)) t = `'${t}`; // evita fórmulas maliciosas ao abrir no Excel
+        return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+      };
+      const linhas = [colunas.map(([t]) => t), ...rows.map((r) => colunas.map(([, f]) => f(r)))];
+      res.type("text/csv; charset=utf-8");
+      return res.send("\uFEFF" + linhas.map((l) => l.map(celula).join(";")).join("\r\n"));
+    }
+
+    const livro = new ExcelJS.Workbook();
+    const aba = livro.addWorksheet("Participantes");
+    aba.columns = colunas.map(([header]) => ({ header, width: header === "E-mail" || header === "Música" ? 32 : 18 }));
+    rows.forEach((r) => aba.addRow(colunas.map(([, f]) => f(r))));
+    aba.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    aba.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4480" } };
+    aba.views = [{ state: "frozen", ySplit: 1 }];
+    aba.autoFilter = { from: "A1", to: { row: 1, column: colunas.length } };
+    res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.send(Buffer.from(await livro.xlsx.writeBuffer()));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ erro: "Não foi possível gerar a planilha." });
   }
 });
 

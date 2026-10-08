@@ -110,6 +110,10 @@
   }
   .entrada:focus { outline: none; border-color: var(--azul); }
   .entrada[aria-invalid="true"] { border-color: var(--erro); }
+  select.entrada {
+    appearance: none; cursor: pointer; padding-right: 2.75rem;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%231D4480' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 1rem center;
+  }
   .msg-erro { color: var(--erro); font-size: .85rem; font-weight: 600; margin-top: .3rem; }
   .msg-erro:empty { display: none; }
   fieldset { border: 0; padding: 0; margin: 0 0 1rem; }
@@ -360,6 +364,41 @@
       <p class="msg-erro" id="erro-email"></p>
     </div>
 
+    <div class="grupo">
+      <label class="rotulo" for="uf">Seu estado*</label>
+      <select class="entrada" id="uf" name="uf" required aria-describedby="erro-uf">
+        <option value="">Selecione</option>
+        <option value="AC">Acre</option>
+        <option value="AL">Alagoas</option>
+        <option value="AP">Amapá</option>
+        <option value="AM">Amazonas</option>
+        <option value="BA">Bahia</option>
+        <option value="CE">Ceará</option>
+        <option value="DF">Distrito Federal</option>
+        <option value="ES">Espírito Santo</option>
+        <option value="GO">Goiás</option>
+        <option value="MA">Maranhão</option>
+        <option value="MT">Mato Grosso</option>
+        <option value="MS">Mato Grosso do Sul</option>
+        <option value="MG">Minas Gerais</option>
+        <option value="PA">Pará</option>
+        <option value="PB">Paraíba</option>
+        <option value="PR">Paraná</option>
+        <option value="PE">Pernambuco</option>
+        <option value="PI">Piauí</option>
+        <option value="RJ">Rio de Janeiro</option>
+        <option value="RN">Rio Grande do Norte</option>
+        <option value="RS">Rio Grande do Sul</option>
+        <option value="RO">Rondônia</option>
+        <option value="RR">Roraima</option>
+        <option value="SC">Santa Catarina</option>
+        <option value="SP">São Paulo</option>
+        <option value="SE">Sergipe</option>
+        <option value="TO">Tocantins</option>
+      </select>
+      <p class="msg-erro" id="erro-uf"></p>
+    </div>
+
     <fieldset>
       <legend class="rotulo">Essa música é:</legend>
       <label class="escolha"><input type="radio" name="tipo" value="conquista" checked> Da minha conquista</label>
@@ -502,7 +541,7 @@ const EXEMPLOS = [
 ];
 
 /* ================= Estado ================= */
-const estado = { nome: "", email: "", tipo: "conquista", amigo: "", aceite: false, musica: null, participacao: null };
+const estado = { nome: "", email: "", uf: "", tipo: "conquista", amigo: "", aceite: false, musica: null, participacao: null };
 
 const $ = s => document.querySelector(s);
 const esc = (s = "") => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -574,6 +613,7 @@ function validar() {
   const regras = [
     [$("#nome"), v => v.trim().length >= 2 || "Informe seu nome."],
     [$("#email"), v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) || "Informe um e-mail válido, como nome@email.com."],
+    [$("#uf"), v => v !== "" || "Selecione o seu estado."],
     [inputAmigo, v => !inputAmigo.required || v.trim().length >= 2 || "Informe o nome de quem vai receber a dedicatória."],
     [$("#aceite"), (_, c) => c.checked || "Aceite os termos para continuar."],
   ];
@@ -596,6 +636,7 @@ form.addEventListener("submit", e => {
   Object.assign(estado, {
     nome: dados.get("nome").trim(),
     email: dados.get("email").trim(),
+    uf: dados.get("uf"),
     tipo: dados.get("tipo"),
     amigo: dados.get("tipo") === "dedicatoria" ? dados.get("amigo").trim() : "",
     aceite: true,
@@ -678,7 +719,7 @@ btnConfirmar.addEventListener("click", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        nome: estado.nome, email: estado.email, tipo: estado.tipo,
+        nome: estado.nome, email: estado.email, uf: estado.uf, tipo: estado.tipo,
         amigo: estado.amigo, aceite: estado.aceite, musicaId: estado.musica.id,
       }),
     });

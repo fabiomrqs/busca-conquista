@@ -151,9 +151,9 @@ async function prepararBanco() {
 // Linha do banco → formato que o front-end já usa (sem e-mail)
 const publico = (r) => ({
   id: r.id,
-  nome: r.nome,
+  nome: primeiroNome(r.nome || ""),          // o mural só recebe o primeiro nome
   tipo: r.tipo,
-  amigo: r.amigo,
+  amigo: r.amigo ? primeiroNome(r.amigo) : null,
   musica: { id: r.musica_id, nome: r.musica_nome, artistas: r.musica_artistas, capa: r.musica_capa, link: r.musica_link },
   criadoEm: new Date(r.criado_em).toISOString(),
 });

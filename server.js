@@ -282,68 +282,62 @@ app.post("/api/admin/logout", (_req, res) => {
 
 app.get("/api/admin/sessao", (req, res) => res.json({ logado: sessaoValida(req) }));
 
-// Monta o WHERE a partir dos filtros da tela (região, estado, tipo e período)
+// Monta o WHERE a partir dos filtros da tela (estados, tipo e período).
+// Os 6 exemplos do mural nunca entram no admin.
 function filtros(q) {
-  const cond = [], valores = [];
+  const cond = ["id NOT LIKE 'exemplo-%'"], valores = [];
   const add = (sql, v) => { valores.push(v); cond.push(sql.replace("?", `$${valores.length}`)); };
 
-  if (q.uf === "nao-informado") cond.push("uf IS NULL");
-  else if (UFS.includes(q.uf)) add("uf = ?", q.uf);
-  else if (REGIOES[q.regiao]) add("uf = ANY(?)", REGIOES[q.regiao]);
+  // uf=SP,RJ,nao-informado (um ou mais estados)
+  const escolhidos = String(q.uf || "").split(",").filter(Boolean);
+  const ufs = escolhidos.filter((u) => UFS.includes(u));
+  const semUf = escolhidos.includes("nao-informado");
+  if (ufs.length || semUf) {
+    const partes = [];
+    if (ufs.length) { valores.push(ufs); partes.push(`uf = ANY($${valores.length})`); }
+    if (semUf) partes.push("uf IS NULL");
+    cond.push(`(${partes.join(" OR ")})`);
+  }
 
   if (["conquista", "dedicatoria"].includes(q.tipo)) add("tipo = ?", q.tipo);
   if (/^\d{4}-\d{2}-\d{2}$/.test(q.de || "")) add("criado_em >= (?::date::timestamp AT TIME ZONE 'America/Sao_Paulo')", q.de);
   if (/^\d{4}-\d{2}-\d{2}$/.test(q.ate || "")) add("criado_em < ((?::date + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo')", q.ate);
-  if (q.exemplos !== "1") cond.push("id NOT LIKE 'exemplo-%'");
 
-  return { where: cond.length ? `WHERE ${cond.join(" AND ")}` : "", valores };
+  return { where: `WHERE ${cond.join(" AND ")}`, valores };
 }
 
-app.get("/api/admin/metricas", exigirLogin, async (req, res) => {
+const POR_PAGINA = 50;
+
+app.get("/api/admin/painel", exigirLogin, async (req, res) => {
   const { where, valores } = filtros(req.query);
-  const hoje = `(now() AT TIME ZONE 'America/Sao_Paulo')::date`;
-  const dia = `(criado_em AT TIME ZONE 'America/Sao_Paulo')::date`;
+  const pagina = Math.max(1, parseInt(req.query.pagina, 10) || 1);
   try {
-    const [resumo, porUf, porDia, musicas, artistas, ultimas] = await Promise.all([
-      db.query(`SELECT count(*)::int AS total,
-                       count(*) FILTER (WHERE tipo = 'conquista')::int AS conquistas,
-                       count(*) FILTER (WHERE tipo = 'dedicatoria')::int AS dedicatorias,
-                       count(*) FILTER (WHERE ${dia} = ${hoje})::int AS hoje,
-                       count(*) FILTER (WHERE criado_em > now() - interval '1 hour')::int AS ultima_hora,
-                       count(DISTINCT email)::int AS pessoas
-                FROM participacoes ${where}`, valores),
-      db.query(`SELECT uf, count(*)::int AS total FROM participacoes ${where} GROUP BY uf ORDER BY total DESC`, valores),
-      db.query(`SELECT to_char(${dia}, 'YYYY-MM-DD') AS dia, count(*)::int AS total
-                FROM participacoes ${where ? where + " AND" : "WHERE"} criado_em > now() - interval '30 days'
-                GROUP BY 1 ORDER BY 1`, valores),
+    const [geral, filtrado, linhas, musicas, artistas] = await Promise.all([
+      db.query(`SELECT count(*)::int AS total FROM participacoes WHERE id NOT LIKE 'exemplo-%'`),
+      db.query(`SELECT count(*)::int AS total FROM participacoes ${where}`, valores),
+      db.query(`SELECT nome, email, tipo, amigo, uf, musica_nome, musica_artistas, criado_em
+                FROM participacoes ${where} ORDER BY criado_em DESC
+                LIMIT ${POR_PAGINA} OFFSET ${(pagina - 1) * POR_PAGINA}`, valores),
       db.query(`SELECT musica_nome AS nome, musica_artistas AS artistas, count(*)::int AS total
                 FROM participacoes ${where} GROUP BY 1, 2 ORDER BY total DESC, nome LIMIT 10`, valores),
       db.query(`SELECT musica_artistas AS nome, count(*)::int AS total
                 FROM participacoes ${where} GROUP BY 1 ORDER BY total DESC, nome LIMIT 10`, valores),
-      db.query(`SELECT nome, email, tipo, amigo, uf, musica_nome, musica_artistas, criado_em
-                FROM participacoes ${where} ORDER BY criado_em DESC LIMIT 20`, valores),
     ]);
-
-    const regioes = Object.fromEntries(Object.keys(REGIOES).map((r) => [r, 0]));
-    let semUf = 0;
-    for (const { uf, total } of porUf.rows) {
-      const r = regiaoDaUf(uf);
-      if (r) regioes[r] += total; else semUf += total;
-    }
-
+    const total = filtrado.rows[0].total;
     res.json({
       atualizadoEm: new Date().toISOString(),
-      resumo: resumo.rows[0],
-      porUf: porUf.rows.filter((r) => r.uf),
-      porRegiao: { ...regioes, "Não informado": semUf },
-      porDia: porDia.rows,
+      totalGeral: geral.rows[0].total,
+      total,
+      pagina,
+      paginas: Math.max(1, Math.ceil(total / POR_PAGINA)),
+      porPagina: POR_PAGINA,
+      participantes: linhas.rows,
       musicas: musicas.rows,
       artistas: artistas.rows,
-      ultimas: ultimas.rows,
     });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ erro: "Não foi possível carregar as métricas." });
+    res.status(500).json({ erro: "Não foi possível carregar o painel." });
   }
 });
 

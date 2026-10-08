@@ -44,7 +44,7 @@
       radial-gradient(closest-side at 62% 58%, rgba(29,68,128,.08), transparent 75%);
     filter: blur(6px);
   }
-  .topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+  .topo { display: flex; justify-content: center; align-items: center; min-height: 48px; }
   .logo-campanha { width: 130px; height: auto; }
   .logo-senac { width: 80px; height: auto; }
   .conteudo { flex: 1; display: flex; flex-direction: column; }
@@ -71,14 +71,14 @@
   /* ---------- Tela 1 ---------- */
   #tela-inicio { text-align: center; }
   #tela-inicio::before { top: 2.5rem; }
-  #tela-inicio .topo { justify-content: center; padding-top: 2rem; }
+  #tela-inicio .topo { padding-top: 2rem; }
   #tela-inicio .logo-campanha { width: 230px; }
   #tela-inicio h1 { font-size: clamp(2rem, 9.5vw, 2.5rem); margin: 2.25rem 0 1.25rem; }
   #tela-inicio .chamada { color: var(--suave); font-size: 1.08rem; max-width: 22em; margin: 0 auto; }
   #tela-inicio .acoes { margin-top: 2.5rem; padding: 0 .5rem; }
   #tela-inicio .rodape { margin-top: auto; }
 
-  /* Menu da tela inicial */
+  /* Menu (presente em todas as telas) */
   .menu { position: absolute; z-index: 2; text-align: left;
     top: calc(1.25rem + env(safe-area-inset-top, 0px)); right: 1.25rem; }
   .menu-botao {
@@ -99,7 +99,9 @@
     color: var(--marinho); font-weight: 700; font-size: 1rem; text-align: left; cursor: pointer;
   }
   .menu-lista button:hover { background: var(--azul-claro); }
-  @media (max-width: 379px) { #tela-inicio .logo-campanha { width: 180px; } } /* evita encostar no botão do menu */
+  .menu-lista button[aria-current="page"] { display: none; }
+  @media (max-width: 379px) { #tela-inicio .logo-campanha { width: 180px; } .logo-campanha { width: 110px; } } /* evita encostar no botão do menu */
+  #form-dados .painel { padding-top: 2rem; }
 
   /* ---------- Formulários ---------- */
   .grupo { margin-bottom: 1rem; }
@@ -278,7 +280,9 @@
     #tela-inicio .acoes { width: 100%; max-width: 380px; margin: 3rem auto 0; padding: 0; }
 
     /* Telas 2, 3 e 4 */
-    #form-dados, #tela-musica .conteudo, #tela-obrigado .conteudo {
+    #form-dados { width: 100%; max-width: 480px; margin: 0 auto; padding-top: 3rem; }
+    #form-dados .painel { padding-top: 0; }
+    #tela-musica .conteudo, #tela-obrigado .conteudo {
       display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
       column-gap: clamp(3rem, 8vw, 7rem); align-items: start; padding-top: 4.5rem;
     }
@@ -325,6 +329,7 @@
       <svg class="fechar" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
     <ul class="menu-lista" id="menu-lista" hidden>
+      <li><button type="button" data-ir="inicio">Início</button></li>
       <li><button type="button" data-ir="dados">Quero participar</button></li>
       <li><button type="button" data-ir="mural">Ver o mural</button></li>
     </ul>
@@ -343,13 +348,9 @@
 </section>
 
 <!-- ============ TELA 2 · Dados ============ -->
-<section class="tela" id="tela-dados" data-tela="dados" aria-labelledby="t2" hidden>
+<section class="tela" id="tela-dados" data-tela="dados" aria-label="Seus dados" hidden>
   <header class="topo"><img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!"></header>
   <form class="conteudo" id="form-dados" novalidate>
-    <div class="intro">
-      <h2 id="t2">Conta para a gente</h2>
-      <p class="so-desktop">No mural aparece só o seu primeiro nome. O e-mail fica com o Senac EAD.</p>
-    </div>
     <div class="painel">
 
     <div class="grupo">
@@ -475,7 +476,7 @@
     <div class="compartilhar">
     <p class="compartilhe">Compartilhe</p>
     <div class="redes">
-      <button type="button" id="share-instagram" aria-label="Compartilhar no Instagram">
+      <button type="button" id="share-instagram" aria-label="Baixar imagem para o Instagram (formato stories 9:16)">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg>
       </button>
       <a id="share-facebook" target="_blank" rel="noopener" aria-label="Compartilhar no Facebook">
@@ -558,11 +559,13 @@ const requisitos = { // impede pular etapas ao usar voltar/avançar do navegador
 function mostrar(nome, { empilhar = true } = {}) {
   if (requisitos[nome] && !requisitos[nome]()) nome = "inicio";
   telas.forEach(t => (t.hidden = t.dataset.tela !== nome));
+  posicionarMenu(nome);
   if (empilhar) history.pushState({ tela: nome }, "", `#${nome}`);
   window.scrollTo(0, 0);
   const atual = document.querySelector(`[data-tela="${nome}"]`);
-  atual.querySelector("h1, h2")?.setAttribute("tabindex", "-1");
-  if (nome === "musica") $("#q").focus(); else atual.querySelector("h1, h2")?.focus({ preventScroll: true });
+  const titulo = atual.querySelector("h1, h2") || atual;
+  titulo.setAttribute("tabindex", "-1");
+  if (nome === "musica") $("#q").focus(); else titulo.focus({ preventScroll: true });
   if (nome === "obrigado") montarCartao();
   if (nome === "mural") carregarMural();
 }
@@ -572,14 +575,21 @@ document.addEventListener("click", e => {
   if (alvo) mostrar(alvo.dataset.ir);
 });
 
-/* Menu da tela inicial */
+/* Menu: um só, levado para a tela que está aberta */
+const menu = $(".menu");
 const menuBotao = $("#menu-botao");
 const menuLista = $("#menu-lista");
+function posicionarMenu(nome) {
+  const atual = document.querySelector(`[data-tela="${nome}"]`);
+  if (menu.parentElement !== atual) atual.prepend(menu);
+  menuLista.querySelectorAll("[data-ir]").forEach(b =>
+    b.dataset.ir === nome ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+}
 function alternarMenu(abrir = menuLista.hidden) {
   menuLista.hidden = !abrir;
   menuBotao.setAttribute("aria-expanded", abrir);
   menuBotao.setAttribute("aria-label", abrir ? "Fechar menu" : "Abrir menu");
-  if (abrir) menuLista.querySelector("button").focus();
+  if (abrir) menuLista.querySelector("button:not([aria-current])")?.focus();
 }
 menuBotao.addEventListener("click", () => alternarMenu());
 document.addEventListener("click", e => {
@@ -765,15 +775,164 @@ function avisar(msg) {
   clearTimeout(avisoTimer); avisoTimer = setTimeout(() => (a.hidden = true), 3500);
 }
 
-// O Instagram não tem link de compartilhamento na web: usa o menu nativo do celular ou copia o texto
-$("#share-instagram").addEventListener("click", async () => {
-  const texto = `${textoCompartilhar()} ${CONFIG.urlCampanha}`;
-  if (navigator.share) {
-    try { await navigator.share({ text: texto, url: CONFIG.urlCampanha }); } catch {}
-    return;
+/* Instagram: gera o cartão em 1080×1920 (9:16, formato stories) e baixa a imagem */
+function carregarImagem(src) {
+  return new Promise((ok, falha) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => ok(img);
+    img.onerror = falha;
+    img.src = src;
+  });
+}
+
+function quebrarLinhas(ctx, texto, larguraMax, maxLinhas = 99) {
+  const palavras = String(texto).split(/\s+/).filter(Boolean);
+  const linhas = [];
+  let linha = "";
+  for (const p of palavras) {
+    const teste = linha ? `${linha} ${p}` : p;
+    if (ctx.measureText(teste).width <= larguraMax || !linha) linha = teste;
+    else { linhas.push(linha); linha = p; }
   }
-  try { await navigator.clipboard.writeText(texto); avisar("Texto copiado. Cole nos stories ou na legenda do Instagram."); }
-  catch { avisar("Não foi possível copiar. Tire um print do cartão para postar."); }
+  if (linha) linhas.push(linha);
+  if (linhas.length > maxLinhas) {
+    linhas.length = maxLinhas;
+    let ultima = linhas[maxLinhas - 1];
+    while (ultima && ctx.measureText(`${ultima}…`).width > larguraMax) ultima = ultima.slice(0, -1);
+    linhas[maxLinhas - 1] = `${ultima.trimEnd()}…`;
+  }
+  return linhas;
+}
+
+function retanguloArredondado(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+async function gerarImagemStories({ comCapa = true } = {}) {
+  const m = estado.musica;
+  const L = 1080, A = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = L; canvas.height = A;
+  const ctx = canvas.getContext("2d");
+  const fonte = '"Montserrat", system-ui, sans-serif';
+  try { await Promise.all([document.fonts.load(`800 52px Montserrat`), document.fonts.load(`700 72px Montserrat`), document.fonts.load(`400 44px Montserrat`)]); } catch {}
+
+  // Capa em alta (640px) quando for do Spotify; senão a que veio
+  let capa = null;
+  if (comCapa && m.capa) {
+    const grande = m.capa.replace("ab67616d00001e02", "ab67616d0000b273");
+    capa = await carregarImagem(grande).catch(() => carregarImagem(m.capa)).catch(() => null);
+  }
+  const [logoCampanha, logoSenac] = await Promise.all([
+    carregarImagem("img/img-1.png").catch(() => null),
+    carregarImagem("img/img-2.png").catch(() => null),
+  ]);
+
+  // Fundo branco com a mancha azul da página
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, L, A);
+  let g = ctx.createRadialGradient(L * .45, A * .45, 0, L * .45, A * .45, L * .75);
+  g.addColorStop(0, "rgba(71,151,203,.18)"); g.addColorStop(1, "rgba(71,151,203,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, L, A);
+
+  // Logo da campanha centralizada no topo
+  let topoFim = 120;
+  if (logoCampanha) {
+    const w = 440, h = w * logoCampanha.naturalHeight / logoCampanha.naturalWidth;
+    ctx.drawImage(logoCampanha, (L - w) / 2, 130, w, h);
+    topoFim = 130 + h;
+  }
+  // Logo Senac embaixo
+  let baseInicio = A - 120;
+  if (logoSenac) {
+    const w = 210, h = w * logoSenac.naturalHeight / logoSenac.naturalWidth;
+    baseInicio = A - 130 - h;
+    ctx.drawImage(logoSenac, (L - w) / 2, baseInicio, w, h);
+  }
+
+  // Mede o conteúdo do cartão
+  const cardX = 90, cardW = L - 180, interno = cardW - 160;
+  const titulo = $("#cartao-titulo").textContent.toUpperCase();
+  ctx.font = `800 52px ${fonte}`;  const lTitulo = quebrarLinhas(ctx, titulo, interno, 3);
+  ctx.font = `700 76px ${fonte}`;  const lMusica = quebrarLinhas(ctx, m.nome.toUpperCase(), interno, 3);
+  ctx.font = `400 44px ${fonte}`;  const lArtista = quebrarLinhas(ctx, m.artistas, interno, 2);
+  const semCapa = 100 + lTitulo.length * 64 + 60 + 70 + lMusica.length * 86 + 16 + lArtista.length * 56 + 100;
+  const espaco = baseInicio - topoFim - 140; // folga acima e abaixo do cartão
+  const tamCapa = Math.max(320, Math.min(580, espaco - semCapa)); // encolhe a capa se o texto for longo
+  const alturaCard = semCapa + tamCapa;
+  const cardY = topoFim + Math.max(50, (baseInicio - topoFim - alturaCard) / 2);
+
+  // Cartão azul com sombra
+  ctx.save();
+  ctx.shadowColor = "rgba(29,68,128,.28)"; ctx.shadowBlur = 50; ctx.shadowOffsetY = 20;
+  retanguloArredondado(ctx, cardX, cardY, cardW, alturaCard, 48);
+  ctx.fillStyle = "#4797CB"; ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  let y = cardY + 100;
+  ctx.font = `800 52px ${fonte}`;
+  lTitulo.forEach(t => { ctx.fillText(t, L / 2, y); y += 64; });
+  y += 60;
+
+  // Capa
+  const capaX = (L - tamCapa) / 2;
+  ctx.save();
+  retanguloArredondado(ctx, capaX, y, tamCapa, tamCapa, 28); ctx.clip();
+  ctx.fillStyle = "#1D4480"; ctx.fillRect(capaX, y, tamCapa, tamCapa);
+  if (capa) ctx.drawImage(capa, capaX, y, tamCapa, tamCapa);
+  else if (logoCampanha) {
+    const w = tamCapa * .8, h = w * logoCampanha.naturalHeight / logoCampanha.naturalWidth;
+    ctx.drawImage(logoCampanha, (L - w) / 2, y + (tamCapa - h) / 2, w, h);
+  }
+  ctx.restore();
+  y += tamCapa + 70;
+
+  ctx.fillStyle = "#fff";
+  ctx.font = `700 76px ${fonte}`;
+  lMusica.forEach(t => { ctx.fillText(t, L / 2, y); y += 86; });
+  y += 16;
+  ctx.globalAlpha = .92;
+  ctx.font = `400 44px ${fonte}`;
+  lArtista.forEach(t => { ctx.fillText(t, L / 2, y); y += 56; });
+  ctx.globalAlpha = 1;
+
+  return new Promise((ok, falha) => {
+    try { canvas.toBlob(b => (b ? ok(b) : falha(new Error("Falha ao gerar"))), "image/png"); }
+    catch (e) { falha(e); } // canvas "contaminado" se a capa não permitir CORS
+  });
+}
+
+function nomeArquivo() {
+  const base = (estado.musica?.nome || "conquista").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `minha-conquista-${base || "senac"}.png`;
+}
+
+$("#share-instagram").addEventListener("click", async e => {
+  const botao = e.currentTarget;
+  botao.disabled = true;
+  try {
+    let blob;
+    try { blob = await gerarImagemStories(); }
+    catch { blob = await gerarImagemStories({ comCapa: false }); } // tenta de novo sem a capa
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nomeArquivo();
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    avisar("Imagem baixada no formato stories (9:16). É só postar no Instagram!");
+  } catch {
+    avisar("Não foi possível gerar a imagem. Tire um print do cartão para postar.");
+  } finally {
+    botao.disabled = false;
+  }
 });
 
 /* ================= Tela 5 · Mural ================= */
@@ -847,6 +1006,7 @@ async function carregarMural() {
 
 /* ================= Início ================= */
 history.replaceState({ tela: "inicio" }, "", location.pathname);
+posicionarMenu("inicio");
 </script>
 </body>
 </html>

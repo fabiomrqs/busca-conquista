@@ -74,9 +74,11 @@
 
   /* ---------- Filtros ---------- */
   .filtros {
-    display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem; background: #fff; border-radius: 16px;
-    padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem;
+    padding-bottom: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--borda);
   }
+  .contagem { color: var(--suave); font-size: .9rem; margin-bottom: .5rem; }
+  .contagem b { color: var(--marinho); font-weight: 800; }
   .filtros > label, .filtro { display: grid; gap: .25rem; font-size: .8rem; font-weight: 700; color: var(--marinho); }
   .filtros .entrada { min-height: 40px; padding: .45rem .7rem; font-size: .9rem; font-weight: 500; border-radius: 8px; }
   .filtros select.entrada { min-width: 150px; }
@@ -117,23 +119,9 @@
   .paginacao div { display: flex; gap: .5rem; }
   .paginacao .btn { min-height: 38px; padding: .4rem 1rem; font-size: .85rem; }
 
-  /* ---------- Rankings ---------- */
-  .duas { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
-  .duas .bloco { margin-bottom: 0; }
-  .ranking { list-style: none; padding: 0; counter-reset: pos; }
-  .ranking li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; gap: .6rem; align-items: baseline; padding: .55rem 0; border-top: 1px solid var(--borda); counter-increment: pos; }
-  .ranking li:first-child { border-top: 0; }
-  .ranking li::before { content: counter(pos); color: var(--azul); font-weight: 800; }
-  .ranking strong { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ranking span { color: var(--suave); font-size: .82rem; }
-  .ranking .valor { font-weight: 800; color: var(--marinho); }
-  .ranking li.vazio { display: block; }
-  .ranking li.vazio::before { content: none; }
-
   @media (max-width: 1023px) { .exportar { margin-left: 0; } }
   @media (max-width: 700px) {
     .painel { padding-left: .9rem; padding-right: .9rem; }
-    .duas { grid-template-columns: 1fr; }
     .filtros > label, .filtro { flex: 1 1 140px; }
     .filtros select.entrada, .multi-botao { min-width: 0; max-width: none; width: 100%; }
     .filtro.estados { flex-basis: 100%; }
@@ -165,43 +153,43 @@
     </div>
   </header>
 
-  <section class="total" aria-live="polite">
-    <b class="num" id="total">–</b><span id="total-rotulo">participantes</span>
-    <small id="total-filtro" hidden></small>
+  <section class="total">
+    <b class="num" id="total">–</b><span id="total-rotulo">participantes no total</span>
   </section>
 
-  <form class="filtros" id="filtros">
-    <div class="filtro estados">
-      <span id="rotulo-estados">Estados</span>
-      <div class="multi" id="multi">
-        <button class="entrada multi-botao" type="button" id="multi-botao" aria-expanded="false" aria-controls="multi-lista" aria-labelledby="rotulo-estados multi-botao">Todos</button>
-        <div class="multi-lista" id="multi-lista" hidden>
-          <div class="multi-acoes">
-            <button type="button" data-marcar="todos">Marcar todos</button>
-            <button type="button" data-marcar="nenhum">Desmarcar</button>
-          </div>
-          <div class="multi-opcoes" id="multi-opcoes"></div>
-        </div>
-      </div>
-    </div>
-    <label>Tipo
-      <select class="entrada" name="tipo">
-        <option value="">Todos</option>
-        <option value="conquista">Conquista</option>
-        <option value="dedicatoria">Dedicatória</option>
-      </select>
-    </label>
-    <label>De<input class="entrada" type="date" name="de"></label>
-    <label>Até<input class="entrada" type="date" name="ate"></label>
-    <button class="limpar" type="reset">Limpar filtros</button>
-    <div class="exportar">
-      <a class="btn" id="exp-xlsx" href="#">Baixar Excel (.xlsx)</a>
-      <a class="btn btn-contorno" id="exp-csv" href="#">Baixar CSV</a>
-    </div>
-  </form>
 
   <section class="bloco">
     <h2>Participantes</h2>
+    <form class="filtros" id="filtros">
+      <div class="filtro estados">
+        <span id="rotulo-estados">Estados</span>
+        <div class="multi" id="multi">
+          <button class="entrada multi-botao" type="button" id="multi-botao" aria-expanded="false" aria-controls="multi-lista" aria-labelledby="rotulo-estados multi-botao">Todos</button>
+          <div class="multi-lista" id="multi-lista" hidden>
+            <div class="multi-acoes">
+              <button type="button" data-marcar="todos">Marcar todos</button>
+              <button type="button" data-marcar="nenhum">Desmarcar</button>
+            </div>
+            <div class="multi-opcoes" id="multi-opcoes"></div>
+          </div>
+        </div>
+      </div>
+      <label>Tipo
+        <select class="entrada" name="tipo">
+          <option value="">Todos</option>
+          <option value="conquista">Conquista</option>
+          <option value="dedicatoria">Dedicatória</option>
+        </select>
+      </label>
+      <label>De<input class="entrada" type="date" name="de"></label>
+      <label>Até<input class="entrada" type="date" name="ate"></label>
+      <button class="limpar" type="reset">Limpar filtros</button>
+      <div class="exportar">
+        <a class="btn" id="exp-xlsx" href="#">Baixar Excel (.xlsx)</a>
+        <a class="btn btn-contorno" id="exp-csv" href="#">Baixar CSV</a>
+      </div>
+    </form>
+    <p class="contagem num" id="contagem" aria-live="polite"></p>
     <div class="tabela-rolagem">
       <table>
         <thead><tr><th>Data</th><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Estado</th><th>Música</th></tr></thead>
@@ -216,17 +204,6 @@
       </div>
     </div>
   </section>
-
-  <div class="duas">
-    <section class="bloco">
-      <h2>Músicas mais escolhidas</h2>
-      <ol class="ranking" id="musicas"></ol>
-    </section>
-    <section class="bloco">
-      <h2>Artistas mais escolhidos</h2>
-      <ol class="ranking" id="artistas"></ol>
-    </section>
-  </div>
 </div>
 
 <script>
@@ -356,11 +333,12 @@ $("#pag-prox").addEventListener("click", () => { pagina++; vistos = new Set(); c
 function filtrando() { return [...parametros().keys()].length > 0; }
 
 function desenharTotal(d) {
-  $("#total").textContent = fmt(d.total);
-  $("#total-rotulo").textContent = d.total === 1 ? "participante" : "participantes";
-  const aviso = $("#total-filtro");
-  aviso.hidden = !filtrando();
-  aviso.textContent = `com os filtros aplicados, de ${fmt(d.totalGeral)} no total`;
+  $("#total").textContent = fmt(d.totalGeral);
+  $("#total-rotulo").textContent = d.totalGeral === 1 ? "participante no total" : "participantes no total";
+  const plural = n => (n === 1 ? "participante" : "participantes");
+  $("#contagem").innerHTML = filtrando()
+    ? `<b>${fmt(d.total)}</b> ${plural(d.total)} ${d.total === 1 ? "filtrado" : "filtrados"} de ${fmt(d.totalGeral)}`
+    : `<b>${fmt(d.totalGeral)}</b> ${plural(d.totalGeral)}`;
 }
 
 let vistos = new Set();
@@ -388,12 +366,6 @@ function desenharTabela(d) {
   }
 }
 
-function desenharRanking(el, itens, sub) {
-  el.innerHTML = itens.length
-    ? itens.map(i => `<li><div><strong>${esc(i.nome)}</strong>${sub ? `<span>${esc(sub(i))}</span>` : ""}</div><span class="valor num">${fmt(i.total)}</span></li>`).join("")
-    : `<li class="vazio">Nenhuma participação com esses filtros.</li>`;
-}
-
 /* ---------- Atualização em tempo real ---------- */
 let timer = null, pedido = 0;
 
@@ -406,8 +378,6 @@ async function carregar() {
     if (d.pagina > d.paginas) { pagina = d.paginas; return carregar(); }
     desenharTotal(d);
     desenharTabela(d);
-    desenharRanking($("#musicas"), d.musicas, i => i.artistas);
-    desenharRanking($("#artistas"), d.artistas);
     $("#ao-vivo").classList.remove("falha");
     $("#hora").textContent = `Ao vivo, atualizado às ${new Date(d.atualizadoEm).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}`;
   } catch (e) {

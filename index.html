@@ -338,8 +338,8 @@
     <img class="logo-campanha" src="img/img-1.png" alt="Quer saber? Senac EAD!">
   </header>
   <div class="conteudo">
-    <h1 id="t1">Toda conquista tem uma música. Qual é a sua?</h1>
-    <p class="chamada">Escolha a música que marcou uma conquista da sua vida ou dedique essa música a quem fez parte dela.</p>
+    <h1 id="t1">Qual é a música da sua conquista?</h1>
+    <p class="chamada">Escolha a trilha que marcou a sua jornada ou dedique uma música a alguém que acabou de conquistar esse marco!</p>
     <div class="acoes">
       <button class="btn" type="button" data-ir="dados">Quero participar</button>
     </div>
@@ -476,7 +476,7 @@
     <div class="compartilhar">
     <p class="compartilhe">Compartilhe</p>
     <div class="redes">
-      <button type="button" id="share-instagram" aria-label="Baixar imagem para o Instagram">
+      <button type="button" id="share-instagram" aria-label="Baixar imagem para o Instagram (formato stories 9:16)">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg>
       </button>
       <a id="share-facebook" target="_blank" rel="noopener" aria-label="Compartilhar no Facebook">
@@ -927,7 +927,7 @@ $("#share-instagram").addEventListener("click", async e => {
     a.href = url; a.download = nomeArquivo();
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    avisar("Imagem baixada no formato stories. É só postar no Instagram!");
+    avisar("Imagem baixada no formato stories (9:16). É só postar no Instagram!");
   } catch {
     avisar("Não foi possível gerar a imagem. Tire um print do cartão para postar.");
   } finally {
@@ -1007,6 +1007,14 @@ async function carregarMural() {
 /* ================= Início ================= */
 history.replaceState({ tela: "inicio" }, "", location.pathname);
 posicionarMenu("inicio");
+
+/* Conta um acesso por visita (recarregar a mesma aba não conta de novo) */
+try {
+  if (!sessionStorage.getItem("acesso-contado")) {
+    fetch(`${CONFIG.apiUrl}/api/acesso`, { method: "POST", keepalive: true }).catch(() => {});
+    sessionStorage.setItem("acesso-contado", "1");
+  }
+} catch { fetch(`${CONFIG.apiUrl}/api/acesso`, { method: "POST", keepalive: true }).catch(() => {}); }
 </script>
 </body>
 </html>

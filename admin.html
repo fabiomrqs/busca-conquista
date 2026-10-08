@@ -71,6 +71,10 @@
   .total b { font-size: clamp(2.6rem, 6vw, 3.6rem); font-weight: 800; line-height: 1; }
   .total span { font-size: 1.1rem; font-weight: 600; }
   .total small { flex-basis: 100%; color: #C9DBF0; font-size: .9rem; font-weight: 500; }
+  .totais { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+  .totais .total { margin-bottom: 0; }
+  .total-acessos { background: #fff; color: var(--marinho); border: 2px solid var(--borda); }
+  .total-acessos small { color: var(--suave); }
 
   /* ---------- Filtros ---------- */
   .filtros {
@@ -153,9 +157,15 @@
     </div>
   </header>
 
-  <section class="total">
-    <b class="num" id="total">–</b><span id="total-rotulo">participantes no total</span>
-  </section>
+  <div class="totais">
+    <section class="total total-acessos" aria-label="Acessos à página">
+      <b class="num" id="acessos">–</b><span id="acessos-rotulo">acessos à página</span>
+      <small id="acessos-hoje"></small>
+    </section>
+    <section class="total" aria-label="Participantes">
+      <b class="num" id="total">–</b><span id="total-rotulo">participantes no total</span>
+    </section>
+  </div>
 
 
   <section class="bloco">
@@ -333,6 +343,10 @@ $("#pag-prox").addEventListener("click", () => { pagina++; vistos = new Set(); c
 function filtrando() { return [...parametros().keys()].length > 0; }
 
 function desenharTotal(d) {
+  const acessos = d.acessosTotal ?? 0, hoje = d.acessosHoje ?? 0;
+  $("#acessos").textContent = fmt(acessos);
+  $("#acessos-rotulo").textContent = acessos === 1 ? "acesso à página" : "acessos à página";
+  $("#acessos-hoje").textContent = `${fmt(hoje)} ${hoje === 1 ? "acesso" : "acessos"} hoje`;
   $("#total").textContent = fmt(d.totalGeral);
   $("#total-rotulo").textContent = d.totalGeral === 1 ? "participante no total" : "participantes no total";
   const plural = n => (n === 1 ? "participante" : "participantes");

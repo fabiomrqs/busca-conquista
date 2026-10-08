@@ -135,6 +135,12 @@ async function prepararBanco() {
     CREATE INDEX IF NOT EXISTS participacoes_criado_em ON participacoes (criado_em DESC);
     -- coluna adicionada depois: bancos criados antes recebem ela aqui
     ALTER TABLE participacoes ADD COLUMN IF NOT EXISTS uf TEXT;
+
+    -- acessos à página: um contador por dia (horário de Brasília)
+    CREATE TABLE IF NOT EXISTS acessos (
+      dia   DATE PRIMARY KEY,
+      total INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   const { rows } = await db.query("SELECT count(*)::int AS total FROM participacoes");
@@ -210,6 +216,27 @@ app.post("/api/participacoes", async (req, res) => {
     console.error(e);
     res.status(500).json({ erro: "Não foi possível salvar sua participação agora." });
   }
+});
+
+/* ---------------- Contador de acessos ----------------
+   A página chama esta rota uma vez por visita. Não guarda IP nem nada pessoal,
+   só soma 1 no contador do dia. */
+
+const ultimoAcesso = new Map(); // freio simples contra recarregar sem parar
+app.post("/api/acesso", async (req, res) => {
+  const agora = Date.now();
+  if (agora - (ultimoAcesso.get(req.ip) || 0) < 10_000) return res.status(204).end();
+  ultimoAcesso.set(req.ip, agora);
+  if (ultimoAcesso.size > 5000) ultimoAcesso.clear();
+  try {
+    await db.query(
+      `INSERT INTO acessos (dia, total) VALUES ((now() AT TIME ZONE 'America/Sao_Paulo')::date, 1)
+       ON CONFLICT (dia) DO UPDATE SET total = acessos.total + 1`,
+    );
+  } catch (e) {
+    console.error(e);
+  }
+  res.status(204).end();
 });
 
 /* ---------------- Admin ----------------
@@ -312,7 +339,7 @@ app.get("/api/admin/painel", exigirLogin, async (req, res) => {
   const { where, valores } = filtros(req.query);
   const pagina = Math.max(1, parseInt(req.query.pagina, 10) || 1);
   try {
-    const [geral, filtrado, linhas, musicas, artistas] = await Promise.all([
+    const [geral, filtrado, linhas, musicas, artistas, acessos] = await Promise.all([
       db.query(`SELECT count(*)::int AS total FROM participacoes WHERE id NOT LIKE 'exemplo-%'`),
       db.query(`SELECT count(*)::int AS total FROM participacoes ${where}`, valores),
       db.query(`SELECT nome, email, tipo, amigo, uf, musica_nome, musica_artistas, criado_em
@@ -322,11 +349,16 @@ app.get("/api/admin/painel", exigirLogin, async (req, res) => {
                 FROM participacoes ${where} GROUP BY 1, 2 ORDER BY total DESC, nome LIMIT 10`, valores),
       db.query(`SELECT musica_artistas AS nome, count(*)::int AS total
                 FROM participacoes ${where} GROUP BY 1 ORDER BY total DESC, nome LIMIT 10`, valores),
+      db.query(`SELECT coalesce(sum(total), 0)::int AS total,
+                       coalesce(sum(total) FILTER (WHERE dia = (now() AT TIME ZONE 'America/Sao_Paulo')::date), 0)::int AS hoje
+                FROM acessos`),
     ]);
     const total = filtrado.rows[0].total;
     res.json({
       atualizadoEm: new Date().toISOString(),
       totalGeral: geral.rows[0].total,
+      acessosTotal: acessos.rows[0].total,
+      acessosHoje: acessos.rows[0].hoje,
       total,
       pagina,
       paginas: Math.max(1, Math.ceil(total / POR_PAGINA)),

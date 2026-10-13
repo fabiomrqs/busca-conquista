@@ -4,10 +4,12 @@ import { readFile } from "node:fs/promises";
 import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
 import ExcelJS from "exceljs";
 import pg from "pg";
+import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 
 const {
   SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, DATABASE_URL,
   ADMIN_USUARIO, ADMIN_SENHA, ADMIN_SEGREDO, PORT = 3000,
+  SITE_URL = "https://www.minhaconquistacomsenacead.com.br", // site da campanha (para onde o link leva)
 } = process.env;
 const faltando = ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "DATABASE_URL", "ADMIN_USUARIO", "ADMIN_SENHA", "ADMIN_SEGREDO"]
   .filter((k) => !process.env[k]);
@@ -23,7 +25,11 @@ const db = new pg.Pool({ connectionString: DATABASE_URL, max: 5 });
 const app = express();
 app.set("trust proxy", 1); // o Render fica na frente do servidor (IP real e HTTPS)
 app.use(cors({
-  origin: "https://fabiomrqs.github.io"
+  origin: [
+    "https://fabiomrqs.github.io",
+    "https://www.minhaconquistacomsenacead.com.br",
+    "https://minhaconquistacomsenacead.com.br",
+  ],
 }));
 app.use(express.json({ limit: "20kb" }));
 app.use(express.static("public"));
@@ -237,6 +243,229 @@ app.post("/api/acesso", async (req, res) => {
     console.error(e);
   }
   res.status(204).end();
+});
+
+/* ---------------- Compartilhamento (Facebook e WhatsApp) ----------------
+   Facebook e WhatsApp não rodam o JavaScript da página: eles leem as tags og:
+   do HTML. Por isso cada participação ganha um link próprio (/c/<id>) com as
+   tags apontando para uma imagem gerada aqui, com a capa da música.
+   Quem clica no link é levado para o site da campanha. */
+
+const PASTA_FONTES = new URL("./fonts/", import.meta.url).pathname;
+GlobalFonts.registerFromPath(`${PASTA_FONTES}Montserrat-ExtraBold.ttf`, "Montserrat ExtraBold");
+GlobalFonts.registerFromPath(`${PASTA_FONTES}Montserrat-Bold.ttf`, "Montserrat Bold");
+GlobalFonts.registerFromPath(`${PASTA_FONTES}Montserrat-Regular.ttf`, "Montserrat");
+
+const escHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const urlPublica = (req) => `${req.protocol}://${req.get("host")}`;
+
+async function buscarParticipacao(id) {
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) return null;
+  const { rows } = await db.query(
+    `SELECT id, nome, tipo, amigo, musica_nome, musica_artistas, musica_capa FROM participacoes WHERE id = $1`, [id],
+  );
+  return rows[0] || null;
+}
+
+const tituloDe = (p) => (p.tipo === "dedicatoria" ? `A música da conquista de ${primeiroNome(p.amigo || "")} é` : "A música da minha conquista é");
+
+// Logo da campanha, buscada uma vez no próprio site
+let logoPromessa = null;
+function logoCampanha() {
+  logoPromessa ??= fetch(`${SITE_URL}/img/img-1.png`)
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject()))
+    .then((b) => loadImage(Buffer.from(b)))
+    .catch(() => { logoPromessa = null; return null; }); // tenta de novo na próxima
+  return logoPromessa;
+}
+
+async function carregarCapa(url) {
+  if (!url) return null;
+  const grande = url.replace("ab67616d00001e02", "ab67616d0000b273"); // versão 640px do Spotify
+  for (const u of [grande, url]) {
+    try {
+      const r = await fetch(u);
+      if (r.ok) return await loadImage(Buffer.from(await r.arrayBuffer()));
+    } catch { /* tenta a próxima */ }
+  }
+  return null;
+}
+
+function quebrar(ctx, texto, largura, maxLinhas) {
+  const linhas = [];
+  let linha = "";
+  for (const p of String(texto).split(/\s+/).filter(Boolean)) {
+    const t = linha ? `${linha} ${p}` : p;
+    if (ctx.measureText(t).width <= largura || !linha) linha = t;
+    else { linhas.push(linha); linha = p; }
+  }
+  if (linha) linhas.push(linha);
+  if (linhas.length > maxLinhas) {
+    linhas.length = maxLinhas;
+    let u = linhas[maxLinhas - 1];
+    while (u && ctx.measureText(`${u}…`).width > largura) u = u.slice(0, -1);
+    linhas[maxLinhas - 1] = `${u.trimEnd()}…`;
+  }
+  return linhas;
+}
+
+function arredondado(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
+
+// Imagem 1200×630, o tamanho recomendado pelo Facebook e aceito pelo WhatsApp
+async function gerarImagemOg({ titulo, musica, artistas, capaUrl, selo = true }) {
+  const L = 1200, A = 630;
+  const canvas = createCanvas(L, A);
+  const ctx = canvas.getContext("2d");
+  const [capa, logo] = await Promise.all([carregarCapa(capaUrl), logoCampanha()]);
+
+  // Fundo branco com a mancha azul do site
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, L, A);
+  const g = ctx.createRadialGradient(L * .3, A * .5, 0, L * .3, A * .5, L * .6);
+  g.addColorStop(0, "rgba(71,151,203,.18)"); g.addColorStop(1, "rgba(71,151,203,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, L, A);
+
+  // Cartão azul
+  const cx = 36, cy = 36, cw = L - 72, ch = A - 72;
+  ctx.save();
+  ctx.shadowColor = "rgba(29,68,128,.25)"; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10;
+  arredondado(ctx, cx, cy, cw, ch, 36); ctx.fillStyle = "#4797CB"; ctx.fill();
+  ctx.restore();
+
+  // Capa à esquerda
+  const tc = 440, xc = cx + 52, yc = (A - tc) / 2;
+  ctx.save();
+  arredondado(ctx, xc, yc, tc, tc, 24); ctx.clip();
+  ctx.fillStyle = capa ? "#1D4480" : "#fff"; ctx.fillRect(xc, yc, tc, tc);
+  if (capa) ctx.drawImage(capa, xc, yc, tc, tc);
+  else if (logo) {
+    const w = tc * .78, h = w * logo.height / logo.width;
+    ctx.drawImage(logo, xc + (tc - w) / 2, yc + (tc - h) / 2, w, h);
+  }
+  ctx.restore();
+
+  // Textos à direita
+  const xt = xc + tc + 52, lt = cx + cw - 52 - xt;
+  ctx.textBaseline = "top"; ctx.fillStyle = "#fff";
+  ctx.font = "30px 'Montserrat ExtraBold'";
+  const lTit = quebrar(ctx, titulo.toUpperCase(), lt, 2);
+  let tam = 58, lMus;
+  do { ctx.font = `${tam}px 'Montserrat Bold'`; lMus = quebrar(ctx, musica.toUpperCase(), lt, 3); tam -= 4; }
+  while (lMus.some((l) => l.endsWith("…")) && tam >= 42);
+  const tamMus = tam + 4;
+  ctx.font = "30px Montserrat";
+  const lArt = artistas ? quebrar(ctx, artistas, lt, 2) : [];
+
+  const comSelo = Boolean(logo && selo && capa);
+  const alturaLogo = comSelo ? 64 : 0;
+  const altura = lTit.length * 38 + 28 + lMus.length * (tamMus * 1.1) + 14 + lArt.length * 38;
+  let y = cy + (ch - altura - (alturaLogo ? alturaLogo + 36 : 0)) / 2;
+
+  ctx.font = "30px 'Montserrat ExtraBold'";
+  lTit.forEach((t) => { ctx.fillText(t, xt, y); y += 38; });
+  y += 28;
+  ctx.font = `${tamMus}px 'Montserrat Bold'`;
+  lMus.forEach((t) => { ctx.fillText(t, xt, y); y += tamMus * 1.1; });
+  y += 14;
+  ctx.globalAlpha = .92; ctx.font = "30px Montserrat";
+  lArt.forEach((t) => { ctx.fillText(t, xt, y); y += 38; });
+  ctx.globalAlpha = 1;
+
+  // Logo da campanha num selo branco
+  if (comSelo) {
+    const h = alturaLogo - 20, w = h * logo.width / logo.height;
+    const yl = y + 36;
+    arredondado(ctx, xt, yl, w + 32, alturaLogo, 14); ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.drawImage(logo, xt + 16, yl + 10, w, h);
+  }
+
+  return canvas.encode("jpeg", 88); // JPEG fica leve (o WhatsApp ignora imagens pesadas)
+}
+
+// Guarda as últimas imagens geradas para não refazer a cada visita do Facebook/WhatsApp
+const cacheImagens = new Map();
+async function imagemEmCache(chave, gerar) {
+  if (cacheImagens.has(chave)) return cacheImagens.get(chave);
+  const buf = await gerar();
+  cacheImagens.set(chave, buf);
+  if (cacheImagens.size > 300) cacheImagens.delete(cacheImagens.keys().next().value);
+  return buf;
+}
+
+function enviarJpeg(res, buf) {
+  res.set("Content-Type", "image/jpeg");
+  res.set("Cache-Control", "public, max-age=604800"); // 7 dias
+  res.send(buf);
+}
+
+app.get("/c/:id/imagem.jpg", async (req, res) => {
+  try {
+    const p = await buscarParticipacao(req.params.id);
+    if (!p) return res.status(404).end();
+    const buf = await imagemEmCache(p.id, () => gerarImagemOg({
+      titulo: tituloDe(p), musica: p.musica_nome, artistas: p.musica_artistas, capaUrl: p.musica_capa,
+    }));
+    enviarJpeg(res, buf);
+  } catch (e) {
+    console.error(e);
+    res.status(500).end();
+  }
+});
+
+// Imagem genérica da campanha (para a página inicial do site)
+app.get("/og/campanha.jpg", async (_req, res) => {
+  try {
+    const buf = await imagemEmCache("campanha", () => gerarImagemOg({
+      titulo: "Senac EAD", musica: "Qual é a música da sua conquista?", artistas: "Escolha a sua e compartilhe!", selo: false,
+    }));
+    enviarJpeg(res, buf);
+  } catch (e) {
+    console.error(e);
+    res.status(500).end();
+  }
+});
+
+app.get("/c/:id", async (req, res) => {
+  try {
+    const p = await buscarParticipacao(req.params.id);
+    if (!p) return res.redirect(302, SITE_URL);
+    const base = urlPublica(req);
+    const url = `${base}/c/${encodeURIComponent(p.id)}`;
+    const titulo = `${tituloDe(p)} “${p.musica_nome}”`;
+    const descricao = `${p.musica_artistas ? `${p.musica_artistas}. ` : ""}Escolha a música da sua conquista também!`;
+    res.set("Cache-Control", "public, max-age=300");
+    res.type("html").send(`<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escHtml(titulo)} | Senac EAD</title>
+<meta name="description" content="${escHtml(descricao)}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="Qual é a música da sua conquista? | Senac EAD">
+<meta property="og:url" content="${escHtml(url)}">
+<meta property="og:title" content="${escHtml(titulo)}">
+<meta property="og:description" content="${escHtml(descricao)}">
+<meta property="og:image" content="${escHtml(`${url}/imagem.jpg`)}">
+<meta property="og:image:secure_url" content="${escHtml(`${url}/imagem.jpg`)}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${escHtml(`Capa de ${p.musica_nome}`)}">
+<meta name="twitter:card" content="summary_large_image">
+<script>location.replace(${JSON.stringify(SITE_URL)});</script>
+</head>
+<body style="font-family:system-ui,sans-serif;text-align:center;padding:3rem 1rem">
+<p><a href="${escHtml(SITE_URL)}">Escolha a música da sua conquista no site do Senac EAD</a></p>
+</body>
+</html>`);
+  } catch (e) {
+    console.error(e);
+    res.redirect(302, SITE_URL);
+  }
 });
 
 /* ---------------- Admin ----------------

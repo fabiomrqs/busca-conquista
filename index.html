@@ -4,6 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Qual é a música da sua conquista? | Senac EAD</title>
+<meta name="description" content="Escolha a música que marcou a sua conquista, ou dedique uma a alguém, e compartilhe. Senac EAD.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="Senac EAD">
+<meta property="og:url" content="https://www.minhaconquistacomsenacead.com.br/">
+<meta property="og:title" content="Qual é a música da sua conquista? | Senac EAD">
+<meta property="og:description" content="Escolha a música que marcou a sua conquista, ou dedique uma a alguém, e compartilhe.">
+<meta property="og:image" content="https://www.minhaconquistacomsenacead.com.br/img/og-campanha.jpg">
+<meta property="og:image:secure_url" content="https://www.minhaconquistacomsenacead.com.br/img/og-campanha.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Qual é a música da sua conquista? Senac EAD">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -529,6 +543,8 @@ const CONFIG = {
   apiUrl: "https://busca-conquista.onrender.com",
   playlistUrl: "https://open.spotify.com/playlist/COLOQUE_O_ID_AQUI",
   urlCampanha: location.origin,
+  // Link próprio de cada participação: o servidor monta a prévia com a capa da música
+  urlCompartilhar: id => `${CONFIG.apiUrl}/c/${encodeURIComponent(id)}`,
 };
 
 /* Exemplos usados só se a API do mural não responder */
@@ -763,9 +779,15 @@ function montarCartao() {
   $("#cartao-musica").textContent = m.nome;
   $("#cartao-artista").textContent = m.artistas;
 
-  const url = CONFIG.urlCampanha;
+  const id = estado.participacao?.id;
+  const url = id ? CONFIG.urlCompartilhar(id) : CONFIG.urlCampanha;
+  estado.linkCompartilhar = url;
   $("#share-facebook").href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
   $("#share-whatsapp").href = `https://wa.me/?text=${encodeURIComponent(`${textoCompartilhar()} ${url}`)}`;
+
+  // Já deixa a imagem pronta: no celular, o botão do WhatsApp envia a própria imagem
+  arquivoWhatsApp = null;
+  if (navigator.canShare) prepararArquivoWhatsApp();
 }
 
 let avisoTimer;
@@ -932,6 +954,31 @@ $("#share-instagram").addEventListener("click", async e => {
     avisar("Não foi possível gerar a imagem. Tire um print do cartão para postar.");
   } finally {
     botao.disabled = false;
+  }
+});
+
+/* WhatsApp: no celular, abre o menu de compartilhar do aparelho já com a imagem
+   do cartão (é só escolher o WhatsApp). Onde isso não existe (computador),
+   segue o link normal, e o WhatsApp mostra a prévia com a capa da música. */
+let arquivoWhatsApp = null;
+async function prepararArquivoWhatsApp() {
+  try {
+    let blob;
+    try { blob = await gerarImagemStories(); }
+    catch { blob = await gerarImagemStories({ comCapa: false }); }
+    const arquivo = new File([blob], nomeArquivo(), { type: "image/png" });
+    if (navigator.canShare({ files: [arquivo] })) arquivoWhatsApp = arquivo;
+  } catch { /* fica com o link */ }
+}
+
+$("#share-whatsapp").addEventListener("click", async e => {
+  if (!arquivoWhatsApp) return; // sem suporte: abre o link do WhatsApp
+  e.preventDefault();
+  const link = e.currentTarget.href;
+  try {
+    await navigator.share({ files: [arquivoWhatsApp], text: `${textoCompartilhar()} ${estado.linkCompartilhar}` });
+  } catch (err) {
+    if (err.name !== "AbortError") window.open(link, "_blank", "noopener");
   }
 });
 

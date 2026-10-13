@@ -269,16 +269,6 @@ async function buscarParticipacao(id) {
 
 const tituloDe = (p) => (p.tipo === "dedicatoria" ? `A música da conquista de ${primeiroNome(p.amigo || "")} é` : "A música da minha conquista é");
 
-// Logo da campanha, buscada uma vez no próprio site
-let logoPromessa = null;
-function logoCampanha() {
-  logoPromessa ??= fetch(`${SITE_URL}/img/img-1.png`)
-    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject()))
-    .then((b) => loadImage(Buffer.from(b)))
-    .catch(() => { logoPromessa = null; return null; }); // tenta de novo na próxima
-  return logoPromessa;
-}
-
 async function carregarCapa(url) {
   if (!url) return null;
   const grande = url.replace("ab67616d00001e02", "ab67616d0000b273"); // versão 640px do Spotify
@@ -314,12 +304,26 @@ function arredondado(ctx, x, y, w, h, r) {
   ctx.roundRect(x, y, w, h, r);
 }
 
+// Nota musical simples (quando a música não tem capa)
+function desenharNota(ctx, cx, cy, t) {
+  ctx.save();
+  ctx.fillStyle = "#fff"; ctx.strokeStyle = "#fff";
+  ctx.lineWidth = t * .09; ctx.lineCap = "round";
+  const xe = cx - t * .3, xd = cx + t * .3, yb = cy + t * .32, yt = cy - t * .42;
+  ctx.beginPath(); ctx.moveTo(xe + t * .14, yb); ctx.lineTo(xe + t * .14, yt + t * .12);
+  ctx.lineTo(xd + t * .14, yt); ctx.lineTo(xd + t * .14, yb - t * .12); ctx.stroke();
+  for (const [x, y] of [[xe, yb], [xd, yb - t * .12]]) {
+    ctx.beginPath(); ctx.ellipse(x, y, t * .17, t * .13, -.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 // Imagem 1200×630, o tamanho recomendado pelo Facebook e aceito pelo WhatsApp
-async function gerarImagemOg({ titulo, musica, artistas, capaUrl, selo = true }) {
+async function gerarImagemOg({ titulo, musica, artistas, capaUrl }) {
   const L = 1200, A = 630;
   const canvas = createCanvas(L, A);
   const ctx = canvas.getContext("2d");
-  const [capa, logo] = await Promise.all([carregarCapa(capaUrl), logoCampanha()]);
+  const capa = await carregarCapa(capaUrl);
 
   // Fundo branco com a mancha azul do site
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, L, A);
@@ -338,12 +342,9 @@ async function gerarImagemOg({ titulo, musica, artistas, capaUrl, selo = true })
   const tc = 440, xc = cx + 52, yc = (A - tc) / 2;
   ctx.save();
   arredondado(ctx, xc, yc, tc, tc, 24); ctx.clip();
-  ctx.fillStyle = capa ? "#1D4480" : "#fff"; ctx.fillRect(xc, yc, tc, tc);
+  ctx.fillStyle = "#1D4480"; ctx.fillRect(xc, yc, tc, tc);
   if (capa) ctx.drawImage(capa, xc, yc, tc, tc);
-  else if (logo) {
-    const w = tc * .78, h = w * logo.height / logo.width;
-    ctx.drawImage(logo, xc + (tc - w) / 2, yc + (tc - h) / 2, w, h);
-  }
+  else desenharNota(ctx, xc + tc / 2, yc + tc / 2, tc * .42); // sem capa: nota musical
   ctx.restore();
 
   // Textos à direita
@@ -358,10 +359,8 @@ async function gerarImagemOg({ titulo, musica, artistas, capaUrl, selo = true })
   ctx.font = "30px Montserrat";
   const lArt = artistas ? quebrar(ctx, artistas, lt, 2) : [];
 
-  const comSelo = Boolean(logo && selo && capa);
-  const alturaLogo = comSelo ? 64 : 0;
   const altura = lTit.length * 38 + 28 + lMus.length * (tamMus * 1.1) + 14 + lArt.length * 38;
-  let y = cy + (ch - altura - (alturaLogo ? alturaLogo + 36 : 0)) / 2;
+  let y = cy + (ch - altura) / 2;
 
   ctx.font = "30px 'Montserrat ExtraBold'";
   lTit.forEach((t) => { ctx.fillText(t, xt, y); y += 38; });
@@ -372,14 +371,6 @@ async function gerarImagemOg({ titulo, musica, artistas, capaUrl, selo = true })
   ctx.globalAlpha = .92; ctx.font = "30px Montserrat";
   lArt.forEach((t) => { ctx.fillText(t, xt, y); y += 38; });
   ctx.globalAlpha = 1;
-
-  // Logo da campanha num selo branco
-  if (comSelo) {
-    const h = alturaLogo - 20, w = h * logo.width / logo.height;
-    const yl = y + 36;
-    arredondado(ctx, xt, yl, w + 32, alturaLogo, 14); ctx.fillStyle = "#fff"; ctx.fill();
-    ctx.drawImage(logo, xt + 16, yl + 10, w, h);
-  }
 
   return canvas.encode("jpeg", 88); // JPEG fica leve (o WhatsApp ignora imagens pesadas)
 }
@@ -418,7 +409,7 @@ app.get("/c/:id/imagem.jpg", async (req, res) => {
 app.get("/og/campanha.jpg", async (_req, res) => {
   try {
     const buf = await imagemEmCache("campanha", () => gerarImagemOg({
-      titulo: "Senac EAD", musica: "Qual é a música da sua conquista?", artistas: "Escolha a sua e compartilhe!", selo: false,
+      titulo: "Senac EAD", musica: "Qual é a música da sua conquista?", artistas: "Escolha a sua e compartilhe!",
     }));
     enviarJpeg(res, buf);
   } catch (e) {

@@ -114,6 +114,38 @@
   table { width: 100%; border-collapse: collapse; font-size: .85rem; min-width: 760px; }
   th { text-align: left; color: var(--suave); font-weight: 700; font-size: .78rem; padding: .5rem .6rem; border-bottom: 2px solid var(--borda); }
   td { padding: .6rem; border-bottom: 1px solid var(--borda); vertical-align: top; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  th.ordenavel { padding: 0; }
+  .ordenar {
+    display: inline-flex; align-items: center; gap: .3rem; width: 100%; padding: .5rem .6rem; border: 0; background: none;
+    color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 6px; white-space: nowrap;
+  }
+  .ordenar:hover { color: var(--marinho); background: var(--azul-claro); }
+  .ordenar svg { flex: none; opacity: .35; }
+  th[aria-sort] .ordenar { color: var(--marinho); }
+  th[aria-sort] .ordenar svg { opacity: 1; }
+  th[aria-sort="ascending"] .ordenar svg { transform: rotate(180deg); }
+  .col-acoes { width: 1%; text-align: right; }
+  .remover {
+    display: inline-flex; align-items: center; gap: .35rem; min-height: 34px; padding: .3rem .7rem; border: 1.5px solid #E5B4AE;
+    border-radius: 999px; background: #fff; color: var(--erro); font-weight: 700; font-size: .78rem; cursor: pointer; white-space: nowrap;
+  }
+  .remover:hover { background: #FCEDEB; border-color: var(--erro); }
+  .remover:disabled { opacity: .5; cursor: progress; }
+
+  /* Confirmação de remoção */
+  dialog.confirmar { margin: auto; border: 0; border-radius: 18px; padding: 1.6rem 1.6rem 1.3rem; width: min(440px, calc(100vw - 2rem)); color: var(--texto); box-shadow: 0 24px 60px rgba(29,68,128,.25); }
+  dialog.confirmar::backdrop { background: rgba(20,35,60,.45); }
+  dialog.confirmar h3 { color: var(--marinho); font-size: 1.15rem; font-weight: 800; margin-bottom: .6rem; }
+  dialog.confirmar p { color: var(--suave); margin-bottom: .5rem; }
+  dialog.confirmar .quem { color: var(--texto); background: var(--azul-claro); border-radius: 10px; padding: .7rem .9rem; margin: .8rem 0; }
+  dialog.confirmar .botoes { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.2rem; flex-wrap: wrap; }
+  .btn-perigo { background: var(--erro); border-color: var(--erro); }
+  .aviso-admin {
+    position: fixed; left: 50%; bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20;
+    background: var(--marinho); color: #fff; font-weight: 600; padding: .8rem 1.2rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.2);
+    max-width: calc(100vw - 2rem);
+  }
   tr.nova td { animation: destaque 3s ease-out; }
   @keyframes destaque { from { background: #FFF6D6; } }
   .etiqueta { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 700; background: var(--azul-claro); color: var(--marinho); }
@@ -202,7 +234,7 @@
     <p class="contagem num" id="contagem" aria-live="polite"></p>
     <div class="tabela-rolagem">
       <table>
-        <thead><tr><th>Data</th><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Estado</th><th>Música</th></tr></thead>
+        <thead><tr><th class="ordenavel" data-ordem="data"><button class="ordenar" type="button">Data<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></th><th class="ordenavel" data-ordem="nome"><button class="ordenar" type="button">Nome<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></th><th class="ordenavel" data-ordem="email"><button class="ordenar" type="button">E-mail<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></th><th class="ordenavel" data-ordem="tipo"><button class="ordenar" type="button">Tipo<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></th><th class="ordenavel" data-ordem="uf"><button class="ordenar" type="button">Estado<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></th><th class="ordenavel" data-ordem="musica"><button class="ordenar" type="button">Música<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></th><th class="col-acoes"><span class="sr-only">Ações</span></th></tr></thead>
         <tbody id="participantes"></tbody>
       </table>
     </div>
@@ -215,6 +247,19 @@
     </div>
   </section>
 </div>
+
+<dialog class="confirmar" id="confirmar" aria-labelledby="confirmar-titulo">
+  <form method="dialog">
+    <h3 id="confirmar-titulo">Remover esta participação?</h3>
+    <p class="quem" id="confirmar-quem"></p>
+    <p>Ela sai do painel, das planilhas e do mural do site. Isso não pode ser desfeito.</p>
+    <div class="botoes">
+      <button class="btn btn-contorno" value="cancelar">Cancelar</button>
+      <button class="btn btn-perigo" value="remover" id="confirmar-sim">Remover</button>
+    </div>
+  </form>
+</dialog>
+<p class="aviso-admin" id="aviso-admin" role="status" hidden></p>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -309,6 +354,34 @@ multiLista.addEventListener("click", e => {
 /* ---------- Filtros ---------- */
 const form = $("#filtros");
 let pagina = 1;
+let ordem = "data", direcao = "desc"; // mais recentes primeiro
+
+// parâmetros + ordenação (a ordenação não conta como filtro)
+function consulta() {
+  const p = parametros();
+  p.set("ordem", ordem); p.set("direcao", direcao);
+  return p;
+}
+
+function marcarOrdem() {
+  document.querySelectorAll("th[data-ordem]").forEach(th => {
+    if (th.dataset.ordem === ordem) th.setAttribute("aria-sort", direcao === "asc" ? "ascending" : "descending");
+    else th.removeAttribute("aria-sort");
+  });
+}
+marcarOrdem();
+
+document.querySelector("thead").addEventListener("click", e => {
+  const th = e.target.closest("th[data-ordem]");
+  if (!th) return;
+  if (ordem === th.dataset.ordem) direcao = direcao === "asc" ? "desc" : "asc";
+  else { ordem = th.dataset.ordem; direcao = ordem === "data" ? "desc" : "asc"; }
+  marcarOrdem();
+  pagina = 1;
+  vistos = new Set();
+  atualizarLinks();
+  carregar();
+});
 
 function parametros() {
   const p = new URLSearchParams();
@@ -319,7 +392,7 @@ function parametros() {
 }
 
 function atualizarLinks() {
-  const p = parametros();
+  const p = consulta();
   p.set("formato", "xlsx"); $("#exp-xlsx").href = `/api/admin/exportar?${p}`;
   p.set("formato", "csv");  $("#exp-csv").href = `/api/admin/exportar?${p}`;
 }
@@ -367,8 +440,10 @@ function desenharTabela(d) {
       ? `<span class="etiqueta ded">Dedicatória</span> para ${esc(r.amigo)}`
       : `<span class="etiqueta">Conquista</span>`;
     return `<tr class="${nova ? "nova" : ""}"><td class="num">${data}</td><td>${esc(r.nome)}</td><td>${esc(r.email || "–")}</td>
-      <td>${tipo}</td><td>${esc(r.uf || "Não informado")}</td><td><strong>${esc(r.musica_nome)}</strong><br><span style="color:var(--suave)">${esc(r.musica_artistas)}</span></td></tr>`;
-  }).join("") : `<tr><td colspan="6" class="vazio">${filtrando() ? "Nenhum participante com esses filtros. Ajuste ou limpe os filtros." : "Ainda não há participantes."}</td></tr>`;
+      <td>${tipo}</td><td>${esc(r.uf || "Não informado")}</td><td><strong>${esc(r.musica_nome)}</strong><br><span style="color:var(--suave)">${esc(r.musica_artistas)}</span></td>
+      <td class="col-acoes"><button class="remover" type="button" data-id="${esc(r.id)}" data-quem="${esc(`${r.nome} · ${r.email || "sem e-mail"} · ${r.musica_nome}`)}" aria-label="Remover a participação de ${esc(r.nome)}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Remover</button></td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="vazio">${filtrando() ? "Nenhum participante com esses filtros. Ajuste ou limpe os filtros." : "Ainda não há participantes."}</td></tr>`;
 
   const pag = $("#paginacao");
   pag.hidden = d.paginas <= 1;
@@ -380,12 +455,50 @@ function desenharTabela(d) {
   }
 }
 
+/* ---------- Remover participação ---------- */
+const dialogo = $("#confirmar");
+let paraRemover = null;
+
+$("#participantes").addEventListener("click", e => {
+  const b = e.target.closest(".remover");
+  if (!b) return;
+  paraRemover = b;
+  $("#confirmar-quem").textContent = b.dataset.quem;
+  dialogo.returnValue = "";
+  dialogo.showModal();
+  dialogo.querySelector("[value=cancelar]").focus(); // o foco começa no botão seguro
+});
+
+dialogo.addEventListener("close", async () => {
+  const botao = paraRemover;
+  paraRemover = null;
+  if (dialogo.returnValue !== "remover" || !botao) return;
+  botao.disabled = true;
+  try {
+    await api(`/api/admin/participacoes/${encodeURIComponent(botao.dataset.id)}`, { method: "DELETE" });
+    avisarAdmin("Participação removida do painel e do mural.");
+    carregar();
+  } catch (err) {
+    if (err.message === "sessao") return;
+    botao.disabled = false;
+    avisarAdmin(err.message);
+    carregar();
+  }
+});
+
+let avisoTimer;
+function avisarAdmin(msg) {
+  const a = $("#aviso-admin");
+  a.textContent = msg; a.hidden = false;
+  clearTimeout(avisoTimer); avisoTimer = setTimeout(() => (a.hidden = true), 3500);
+}
+
 /* ---------- Atualização em tempo real ---------- */
 let timer = null, pedido = 0;
 
 async function carregar() {
   const meu = ++pedido;
-  const p = parametros(); p.set("pagina", pagina);
+  const p = consulta(); p.set("pagina", pagina);
   try {
     const d = await api(`/api/admin/painel?${p}`);
     if (meu !== pedido) return; // chegou uma resposta mais nova

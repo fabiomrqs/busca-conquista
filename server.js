@@ -555,6 +555,21 @@ function filtros(q) {
 
 const POR_PAGINA = 50;
 
+// Ordenação da tabela: só colunas desta lista (nunca texto vindo direto do navegador)
+const ORDENS = {
+  data: "criado_em",
+  nome: "lower(nome)",
+  email: "lower(email)",
+  tipo: "tipo",
+  uf: "uf",
+  musica: "lower(musica_nome)",
+};
+function ordenacao(q) {
+  const coluna = ORDENS[q.ordem] || ORDENS.data;
+  const direcao = q.direcao === "asc" ? "ASC" : "DESC";
+  return `ORDER BY ${coluna} ${direcao} NULLS LAST, criado_em DESC`;
+}
+
 app.get("/api/admin/painel", exigirLogin, async (req, res) => {
   const { where, valores } = filtros(req.query);
   const pagina = Math.max(1, parseInt(req.query.pagina, 10) || 1);
@@ -562,8 +577,8 @@ app.get("/api/admin/painel", exigirLogin, async (req, res) => {
     const [geral, filtrado, linhas, musicas, artistas, acessos] = await Promise.all([
       db.query(`SELECT count(*)::int AS total FROM participacoes WHERE id NOT LIKE 'exemplo-%'`),
       db.query(`SELECT count(*)::int AS total FROM participacoes ${where}`, valores),
-      db.query(`SELECT nome, email, tipo, amigo, uf, musica_nome, musica_artistas, criado_em
-                FROM participacoes ${where} ORDER BY criado_em DESC
+      db.query(`SELECT id, nome, email, tipo, amigo, uf, musica_nome, musica_artistas, criado_em
+                FROM participacoes ${where} ${ordenacao(req.query)}
                 LIMIT ${POR_PAGINA} OFFSET ${(pagina - 1) * POR_PAGINA}`, valores),
       db.query(`SELECT musica_nome AS nome, musica_artistas AS artistas, count(*)::int AS total
                 FROM participacoes ${where} GROUP BY 1, 2 ORDER BY total DESC, nome LIMIT 10`, valores),
@@ -593,12 +608,25 @@ app.get("/api/admin/painel", exigirLogin, async (req, res) => {
   }
 });
 
+// Remove uma participação de vez: some do admin, do mural e o link de compartilhar deixa de funcionar
+app.delete("/api/admin/participacoes/:id", exigirLogin, async (req, res) => {
+  try {
+    const { rowCount } = await db.query("DELETE FROM participacoes WHERE id = $1", [req.params.id]);
+    cacheImagens.delete(req.params.id);
+    if (!rowCount) return res.status(404).json({ erro: "Essa participação já tinha sido removida." });
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ erro: "Não foi possível remover agora." });
+  }
+});
+
 app.get("/api/admin/exportar", exigirLogin, async (req, res) => {
   const formato = req.query.formato === "xlsx" ? "xlsx" : "csv";
   const { where, valores } = filtros(req.query);
   try {
     const { rows } = await db.query(
-      `SELECT * FROM participacoes ${where} ORDER BY criado_em DESC`, valores,
+      `SELECT * FROM participacoes ${where} ${ordenacao(req.query)}`, valores,
     );
     const colunas = [
       ["Data", (r) => new Date(r.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })],

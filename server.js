@@ -1,7 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { readFile } from "node:fs/promises";
-import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
+import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import ExcelJS from "exceljs";
 import pg from "pg";
 import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
@@ -10,6 +10,7 @@ const {
   SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, DATABASE_URL,
   ADMIN_USUARIO, ADMIN_SENHA, ADMIN_SEGREDO, PORT = 3000,
   SITE_URL = "https://www.minhaconquistacomsenacead.com.br", // site da campanha (para onde o link leva)
+  SPOTIFY_PLAYLIST_ID = "", // playlist que recebe as músicas escolhidas (opcional)
 } = process.env;
 const faltando = ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "DATABASE_URL", "ADMIN_USUARIO", "ADMIN_SENHA", "ADMIN_SEGREDO"]
   .filter((k) => !process.env[k]);
@@ -143,6 +144,18 @@ async function prepararBanco() {
     ALTER TABLE participacoes ADD COLUMN IF NOT EXISTS uf TEXT;
 
     -- acessos à página: um contador por dia (horário de Brasília)
+    -- configurações guardadas pelo servidor (ex.: autorização do Spotify)
+    CREATE TABLE IF NOT EXISTS config (
+      chave TEXT PRIMARY KEY,
+      valor TEXT NOT NULL
+    );
+
+    -- músicas que o servidor já colocou na playlist (evita repetir a mesma faixa)
+    CREATE TABLE IF NOT EXISTS playlist_faixas (
+      musica_id     TEXT PRIMARY KEY,
+      adicionada_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS acessos (
       dia   DATE PRIMARY KEY,
       total INTEGER NOT NULL DEFAULT 0
@@ -216,6 +229,8 @@ app.post("/api/participacoes", async (req, res) => {
       criadoEm: new Date().toISOString(),
     };
     await inserir(nova);
+    // Coloca a música na playlist em segundo plano (a pessoa não espera por isso)
+    adicionarNaPlaylist([f.id]).catch((e) => console.error("Playlist:", e.message));
     const { email: _e, uf: _u, ...semEmail } = nova;
     res.status(201).json(semEmail);
   } catch (e) {
@@ -553,6 +568,201 @@ function filtros(q) {
   return { where: `WHERE ${cond.join(" AND ")}`, valores };
 }
 
+/* ---------------- Playlist automática no Spotify ----------------
+   Para mexer numa playlist, o Spotify exige a autorização da conta dona dela
+   (a chave do app sozinha só permite buscar músicas). Essa autorização é feita
+   uma única vez em /admin/spotify e fica guardada na tabela "config". */
+
+const ESCOPOS = "playlist-modify-public playlist-modify-private";
+const COOKIE_ESTADO = "spotify_estado";
+let tokenUsuario = null, tokenUsuarioExpira = 0;
+
+const lerConfig = async (chave) => (await db.query("SELECT valor FROM config WHERE chave = $1", [chave])).rows[0]?.valor || null;
+const salvarConfig = (chave, valor) => db.query(
+  "INSERT INTO config (chave, valor) VALUES ($1, $2) ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor", [chave, valor],
+);
+
+async function pedirTokenSpotify(corpo) {
+  const auth = Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString("base64");
+  const r = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(corpo),
+  });
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Spotify recusou o token (${r.status} ${dados.error || ""})`.trim());
+  return dados;
+}
+
+// Token da conta dona da playlist (renovado sozinho quando expira)
+async function getTokenUsuario() {
+  if (tokenUsuario && Date.now() < tokenUsuarioExpira) return tokenUsuario;
+  const refresh = await lerConfig("spotify_refresh_token");
+  if (!refresh) return null;
+  const d = await pedirTokenSpotify({ grant_type: "refresh_token", refresh_token: refresh });
+  if (d.refresh_token) await salvarConfig("spotify_refresh_token", d.refresh_token);
+  tokenUsuario = d.access_token;
+  tokenUsuarioExpira = Date.now() + (d.expires_in - 60) * 1000;
+  return tokenUsuario;
+}
+
+async function spotifyPlaylist(metodo, corpo) {
+  const token = await getTokenUsuario();
+  if (!token) throw new Error("conta do Spotify ainda não conectada em /admin/spotify");
+  const r = await fetch(`https://api.spotify.com/v1/playlists/${encodeURIComponent(SPOTIFY_PLAYLIST_ID)}/tracks`, {
+    method: metodo,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(corpo),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(`Spotify respondeu ${r.status}: ${d.error?.message || "erro desconhecido"}`);
+  }
+}
+
+// Adiciona as faixas que ainda não estão na playlist (no máximo 100 por pedido, regra do Spotify)
+async function adicionarNaPlaylist(ids) {
+  if (!SPOTIFY_PLAYLIST_ID) return 0;
+  const unicos = [...new Set(ids.filter((id) => /^[A-Za-z0-9]{22}$/.test(id)))];
+  let adicionadas = 0;
+  for (let i = 0; i < unicos.length; i += 100) {
+    // "Reserva" as faixas antes de enviar: se duas pessoas escolherem a mesma música ao mesmo tempo, só uma envia
+    const { rows } = await db.query(
+      `INSERT INTO playlist_faixas (musica_id) SELECT unnest($1::text[]) ON CONFLICT DO NOTHING RETURNING musica_id`,
+      [unicos.slice(i, i + 100)],
+    );
+    const novas = rows.map((r) => r.musica_id);
+    if (!novas.length) continue;
+    try {
+      await spotifyPlaylist("POST", { uris: novas.map((id) => `spotify:track:${id}`) });
+      adicionadas += novas.length;
+    } catch (e) {
+      await db.query("DELETE FROM playlist_faixas WHERE musica_id = ANY($1)", [novas]); // tenta de novo na próxima
+      throw e;
+    }
+  }
+  return adicionadas;
+}
+
+async function removerDaPlaylistSeSobrou(musicaId) {
+  if (!SPOTIFY_PLAYLIST_ID) return;
+  const { rows } = await db.query("SELECT 1 FROM participacoes WHERE musica_id = $1 LIMIT 1", [musicaId]);
+  if (rows.length) return; // outra pessoa também escolheu essa música
+  const { rowCount } = await db.query("DELETE FROM playlist_faixas WHERE musica_id = $1", [musicaId]);
+  if (rowCount) await spotifyPlaylist("DELETE", { tracks: [{ uri: `spotify:track:${musicaId}` }] });
+}
+
+// Página simples de configuração (só para quem está logado no admin)
+function paginaSpotify(res, { conta, naPlaylist, escolhidas, mensagem, erro }) {
+  const pronta = Boolean(SPOTIFY_PLAYLIST_ID);
+  const faltam = Math.max(0, escolhidas - naPlaylist);
+  res.set("Cache-Control", "no-store");
+  res.type("html").send(`<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Playlist do Spotify | Painel</title>
+<style>
+  body { margin: 0; background: #F3F6FA; color: #2B3A55; font: 16px/1.5 "Montserrat", system-ui, sans-serif; }
+  main { max-width: 620px; margin: 2.5rem auto; padding: 0 1.25rem; }
+  .card { background: #fff; border-radius: 18px; padding: 1.75rem; }
+  h1 { color: #1D4480; font-size: 1.4rem; margin: 0 0 .25rem; }
+  .voltar { color: #4797CB; font-weight: 700; text-decoration: none; display: inline-block; margin-bottom: 1rem; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: .5rem 1rem; margin: 1.25rem 0; }
+  dt { color: #5E6B7A; font-weight: 600; } dd { margin: 0; font-weight: 700; word-break: break-all; }
+  .ok { color: #2E7D4F; } .nao { color: #C0392B; }
+  .msg { padding: .8rem 1rem; border-radius: 10px; background: #EAF3FA; margin: 1rem 0; }
+  .msg.erro { background: #FCEDEB; color: #A93226; }
+  .acoes { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1.25rem; }
+  .btn { display: inline-flex; align-items: center; min-height: 44px; padding: .6rem 1.2rem; border-radius: 999px; border: 2px solid #1D4480;
+    background: #1D4480; color: #fff; font: inherit; font-weight: 700; line-height: 1.2; text-decoration: none; cursor: pointer; }
+  dd a { color: #1D4480; }
+  .btn.contorno { background: #fff; color: #1D4480; }
+  p.dica { color: #5E6B7A; font-size: .9rem; }
+</style></head><body><main>
+<a class="voltar" href="/admin">← Voltar ao painel</a>
+<div class="card">
+  <h1>Playlist do Spotify</h1>
+  <p class="dica">Cada música escolhida no site entra sozinha na playlist. Se uma participação for removida no painel e ninguém mais tiver escolhido aquela música, ela sai da playlist também.</p>
+  ${mensagem ? `<p class="msg">${escHtml(mensagem)}</p>` : ""}
+  ${erro ? `<p class="msg erro">${escHtml(erro)}</p>` : ""}
+  <dl>
+    <dt>Playlist</dt><dd>${pronta ? `<a href="https://open.spotify.com/playlist/${escHtml(SPOTIFY_PLAYLIST_ID)}" target="_blank" rel="noopener">${escHtml(SPOTIFY_PLAYLIST_ID)}</a>` : `<span class="nao">defina SPOTIFY_PLAYLIST_ID no Render</span>`}</dd>
+    <dt>Conta conectada</dt><dd>${conta ? `<span class="ok">${escHtml(conta)}</span>` : `<span class="nao">nenhuma</span>`}</dd>
+    <dt>Músicas escolhidas</dt><dd>${escolhidas}</dd>
+    <dt>Já na playlist</dt><dd>${naPlaylist}${faltam ? ` <span class="nao">(faltam ${faltam})</span>` : ""}</dd>
+  </dl>
+  <div class="acoes">
+    ${pronta ? `<a class="btn ${conta ? "contorno" : ""}" href="/admin/spotify/conectar">${conta ? "Conectar outra conta" : "Conectar conta do Spotify"}</a>` : ""}
+    ${pronta && conta && faltam ? `<form method="post" action="/admin/spotify/sincronizar"><button class="btn">Adicionar as ${faltam} que faltam</button></form>` : ""}
+  </div>
+  ${pronta ? `<p class="dica">Conecte com a conta <b>dona da playlist</b> (ou que seja colaboradora dela).</p>` : ""}
+</div></main></body></html>`);
+}
+
+async function statusSpotify() {
+  const [conta, na, esc] = await Promise.all([
+    lerConfig("spotify_conta"),
+    db.query("SELECT count(*)::int AS n FROM playlist_faixas"),
+    db.query("SELECT count(DISTINCT musica_id)::int AS n FROM participacoes WHERE musica_id IS NOT NULL"),
+  ]);
+  return { conta, naPlaylist: na.rows[0].n, escolhidas: esc.rows[0].n };
+}
+
+const exigirLoginPagina = (req, res, next) => (sessaoValida(req) ? next() : res.redirect("/admin"));
+const urlRetornoSpotify = (req) => `${urlPublica(req)}/admin/spotify/callback`;
+
+app.get("/admin/spotify", exigirLoginPagina, async (req, res) => {
+  const mensagem = req.query.status === "ok" ? "Conta conectada! As próximas músicas já vão para a playlist." : req.query.msg;
+  paginaSpotify(res, { ...(await statusSpotify()), mensagem, erro: req.query.erro });
+});
+
+app.get("/admin/spotify/conectar", exigirLoginPagina, (req, res) => {
+  const estado = randomBytes(16).toString("hex");
+  res.cookie(COOKIE_ESTADO, estado, { httpOnly: true, secure: req.secure, sameSite: "lax", maxAge: 10 * 60 * 1000, path: "/admin/spotify" });
+  const p = new URLSearchParams({
+    client_id: SPOTIFY_CLIENT_ID, response_type: "code", redirect_uri: urlRetornoSpotify(req),
+    scope: ESCOPOS, state: estado, show_dialog: "true",
+  });
+  res.redirect(`https://accounts.spotify.com/authorize?${p}`);
+});
+
+// Sem exigir o login aqui: o cookie do admin é "Strict" e não vem quando o Spotify
+// redireciona de volta. A proteção é o código de estado, criado só por quem estava logado.
+app.get("/admin/spotify/callback", async (req, res) => {
+  const cookie = (req.headers.cookie || "").split(/;\s*/).find((c) => c.startsWith(`${COOKIE_ESTADO}=`))?.split("=")[1];
+  res.clearCookie(COOKIE_ESTADO, { path: "/admin/spotify" });
+  const voltar = (q) => res.redirect(`/admin/spotify?${new URLSearchParams(q)}`);
+  if (req.query.error) return voltar({ erro: "A autorização foi cancelada no Spotify." });
+  if (!cookie || !req.query.state || !iguais(cookie, req.query.state)) return voltar({ erro: "A autorização expirou. Tente conectar de novo." });
+  try {
+    const d = await pedirTokenSpotify({ grant_type: "authorization_code", code: String(req.query.code || ""), redirect_uri: urlRetornoSpotify(req) });
+    if (!d.refresh_token) throw new Error("o Spotify não enviou a autorização permanente");
+    const eu = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${d.access_token}` } }).then((r) => r.json());
+    await salvarConfig("spotify_refresh_token", d.refresh_token);
+    await salvarConfig("spotify_conta", eu.display_name || eu.id || "conta do Spotify");
+    tokenUsuario = d.access_token;
+    tokenUsuarioExpira = Date.now() + (d.expires_in - 60) * 1000;
+    voltar({ status: "ok" });
+  } catch (e) {
+    console.error(e);
+    voltar({ erro: `Não foi possível conectar: ${e.message}` });
+  }
+});
+
+// Coloca na playlist as músicas escolhidas antes da conexão (ou que falharam)
+app.post("/admin/spotify/sincronizar", exigirLoginPagina, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT musica_id FROM participacoes WHERE musica_id IS NOT NULL
+       GROUP BY musica_id ORDER BY min(criado_em)`,
+    );
+    const n = await adicionarNaPlaylist(rows.map((r) => r.musica_id));
+    res.redirect(`/admin/spotify?${new URLSearchParams({ msg: `${n} ${n === 1 ? "música adicionada" : "músicas adicionadas"} à playlist.` })}`);
+  } catch (e) {
+    console.error(e);
+    res.redirect(`/admin/spotify?${new URLSearchParams({ erro: `Não foi possível adicionar: ${e.message}` })}`);
+  }
+});
+
 const POR_PAGINA = 50;
 
 // Ordenação da tabela: só colunas desta lista (nunca texto vindo direto do navegador)
@@ -611,9 +821,11 @@ app.get("/api/admin/painel", exigirLogin, async (req, res) => {
 // Remove uma participação de vez: some do admin, do mural e o link de compartilhar deixa de funcionar
 app.delete("/api/admin/participacoes/:id", exigirLogin, async (req, res) => {
   try {
-    const { rowCount } = await db.query("DELETE FROM participacoes WHERE id = $1", [req.params.id]);
+    const { rows } = await db.query("DELETE FROM participacoes WHERE id = $1 RETURNING musica_id", [req.params.id]);
     cacheImagens.delete(req.params.id);
-    if (!rowCount) return res.status(404).json({ erro: "Essa participação já tinha sido removida." });
+    if (!rows.length) return res.status(404).json({ erro: "Essa participação já tinha sido removida." });
+    // Se ninguém mais escolheu essa música, ela sai da playlist também
+    if (rows[0].musica_id) removerDaPlaylistSeSobrou(rows[0].musica_id).catch((e) => console.error("Playlist:", e.message));
     res.status(204).end();
   } catch (e) {
     console.error(e);

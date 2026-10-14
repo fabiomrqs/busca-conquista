@@ -606,17 +606,29 @@ async function getTokenUsuario() {
   return tokenUsuario;
 }
 
-async function spotifyPlaylist(metodo, corpo) {
+async function spotifyPlaylist(metodo, uris) {
   const token = await getTokenUsuario();
   if (!token) throw new Error("conta do Spotify ainda não conectada em /admin/spotify");
-  const r = await fetch(`https://api.spotify.com/v1/playlists/${encodeURIComponent(SPOTIFY_PLAYLIST_ID)}/tracks`, {
+  const base = `https://api.spotify.com/v1/playlists/${encodeURIComponent(SPOTIFY_PLAYLIST_ID)}`;
+  const enviar = (caminho, corpo) => fetch(`${base}/${caminho}`, {
     method: metodo,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(corpo),
   });
+  const lista = uris.map((uri) => ({ uri }));
+  // Endereço clássico primeiro; se o Spotify recusar, tenta o endereço mais novo (/items)
+  let r = await enviar("tracks", metodo === "POST" ? { uris } : { tracks: lista });
+  if (r.status === 403 || r.status === 404 || r.status === 410) {
+    const r2 = await enviar("items", metodo === "POST" ? { uris } : { items: lista });
+    if (r2.ok) return;
+    r = r2.status === 404 ? r : r2;
+  }
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
-    throw new Error(`Spotify respondeu ${r.status}: ${d.error?.message || "erro desconhecido"}`);
+    const dica = r.status === 403
+      ? " Confira em /admin/spotify se a conta conectada é a dona da playlist (ou colaboradora) e se ela está liberada em User Management no painel do Spotify."
+      : "";
+    throw new Error(`Spotify respondeu ${r.status}: ${d.error?.message || r.statusText || "erro desconhecido"}.${dica}`);
   }
 }
 
@@ -634,7 +646,7 @@ async function adicionarNaPlaylist(ids) {
     const novas = rows.map((r) => r.musica_id);
     if (!novas.length) continue;
     try {
-      await spotifyPlaylist("POST", { uris: novas.map((id) => `spotify:track:${id}`) });
+      await spotifyPlaylist("POST", novas.map((id) => `spotify:track:${id}`));
       adicionadas += novas.length;
     } catch (e) {
       await db.query("DELETE FROM playlist_faixas WHERE musica_id = ANY($1)", [novas]); // tenta de novo na próxima
@@ -649,11 +661,29 @@ async function removerDaPlaylistSeSobrou(musicaId) {
   const { rows } = await db.query("SELECT 1 FROM participacoes WHERE musica_id = $1 LIMIT 1", [musicaId]);
   if (rows.length) return; // outra pessoa também escolheu essa música
   const { rowCount } = await db.query("DELETE FROM playlist_faixas WHERE musica_id = $1", [musicaId]);
-  if (rowCount) await spotifyPlaylist("DELETE", { tracks: [{ uri: `spotify:track:${musicaId}` }] });
+  if (rowCount) await spotifyPlaylist("DELETE", [`spotify:track:${musicaId}`]);
+}
+
+function blocoDiagnostico(d) {
+  if (!d) return "";
+  if (d.falha) return `<dt>Verificação</dt><dd><span class="nao">${escHtml(d.falha)}</span></dd>`;
+  const linhas = [];
+  if (d.erroConta) linhas.push(`<dt>Conta</dt><dd><span class="nao">o Spotify recusou ler a conta (${d.erroConta}). Ela está liberada em User Management?</span></dd>`);
+  else linhas.push(`<dt>ID da conta</dt><dd>${escHtml(d.contaId)}${d.produto ? ` <span style="color:#5E6B7A;font-weight:500">(${escHtml(d.produto)})</span>` : ""}</dd>`);
+  if (d.erroPlaylist) linhas.push(`<dt>Playlist</dt><dd><span class="nao">não foi possível ler a playlist (${d.erroPlaylist}). Confira o ID.</span></dd>`);
+  else {
+    const podeEditar = d.donoId && (d.donoId === d.contaId || d.colaborativa);
+    linhas.push(`<dt>Nome da playlist</dt><dd>${escHtml(d.nome)}</dd>`);
+    linhas.push(`<dt>Dona da playlist</dt><dd>${escHtml(d.donoNome)} <span style="color:#5E6B7A;font-weight:500">(${escHtml(d.donoId)})</span></dd>`);
+    linhas.push(`<dt>Pode adicionar?</dt><dd>${podeEditar
+      ? `<span class="ok">sim${d.donoId !== d.contaId ? ", a playlist é colaborativa" : ""}</span>`
+      : `<span class="nao">não: a conta conectada não é a dona da playlist. Conecte a conta "${escHtml(d.donoNome)}" ou torne a playlist colaborativa.</span>`}</dd>`);
+  }
+  return linhas.join("\n    ");
 }
 
 // Página simples de configuração (só para quem está logado no admin)
-function paginaSpotify(res, { conta, naPlaylist, escolhidas, mensagem, erro }) {
+function paginaSpotify(res, { conta, naPlaylist, escolhidas, mensagem, erro, diag }) {
   const pronta = Boolean(SPOTIFY_PLAYLIST_ID);
   const faltam = Math.max(0, escolhidas - naPlaylist);
   res.set("Cache-Control", "no-store");
@@ -687,32 +717,59 @@ function paginaSpotify(res, { conta, naPlaylist, escolhidas, mensagem, erro }) {
   <dl>
     <dt>Playlist</dt><dd>${pronta ? `<a href="https://open.spotify.com/playlist/${escHtml(SPOTIFY_PLAYLIST_ID)}" target="_blank" rel="noopener">${escHtml(SPOTIFY_PLAYLIST_ID)}</a>` : `<span class="nao">defina SPOTIFY_PLAYLIST_ID no Render</span>`}</dd>
     <dt>Conta conectada</dt><dd>${conta ? `<span class="ok">${escHtml(conta)}</span>` : `<span class="nao">nenhuma</span>`}</dd>
+${blocoDiagnostico(diag)}
     <dt>Músicas escolhidas</dt><dd>${escolhidas}</dd>
     <dt>Já na playlist</dt><dd>${naPlaylist}${faltam ? ` <span class="nao">(faltam ${faltam})</span>` : ""}</dd>
   </dl>
   <div class="acoes">
     ${pronta ? `<a class="btn ${conta ? "contorno" : ""}" href="/admin/spotify/conectar">${conta ? "Conectar outra conta" : "Conectar conta do Spotify"}</a>` : ""}
-    ${pronta && conta && faltam ? `<form method="post" action="/admin/spotify/sincronizar"><button class="btn">Adicionar as ${faltam} que faltam</button></form>` : ""}
+    ${pronta && conta && faltam ? `<form method="post" action="/admin/spotify/sincronizar"><button class="btn">${faltam === 1 ? "Adicionar a música que falta" : `Adicionar as ${faltam} que faltam`}</button></form>` : ""}
   </div>
   ${pronta ? `<p class="dica">Conecte com a conta <b>dona da playlist</b> (ou que seja colaboradora dela).</p>` : ""}
 </div></main></body></html>`);
 }
 
+// Confere no Spotify quem está conectado e quem é dono da playlist (ajuda a entender um 403)
+async function diagnosticoSpotify() {
+  if (!SPOTIFY_PLAYLIST_ID) return null;
+  try {
+    const token = await getTokenUsuario();
+    if (!token) return null;
+    const h = { Authorization: `Bearer ${token}` };
+    const [eu, pl] = await Promise.all([
+      fetch("https://api.spotify.com/v1/me", { headers: h }),
+      fetch(`https://api.spotify.com/v1/playlists/${encodeURIComponent(SPOTIFY_PLAYLIST_ID)}?fields=name,collaborative,owner(id,display_name)`, { headers: h }),
+    ]);
+    const d = { erroConta: eu.ok ? null : eu.status, erroPlaylist: pl.ok ? null : pl.status };
+    if (eu.ok) { const j = await eu.json(); d.contaId = j.id; d.contaNome = j.display_name || j.id; d.produto = j.product; }
+    if (pl.ok) { const j = await pl.json(); d.nome = j.name; d.donoId = j.owner?.id; d.donoNome = j.owner?.display_name || j.owner?.id; d.colaborativa = j.collaborative; }
+    return d;
+  } catch (e) {
+    return { falha: e.message };
+  }
+}
+
 async function statusSpotify() {
-  const [conta, na, esc] = await Promise.all([
+  const [conta, na, esc, diag] = await Promise.all([
     lerConfig("spotify_conta"),
     db.query("SELECT count(*)::int AS n FROM playlist_faixas"),
     db.query("SELECT count(DISTINCT musica_id)::int AS n FROM participacoes WHERE musica_id IS NOT NULL"),
+    diagnosticoSpotify(),
   ]);
-  return { conta, naPlaylist: na.rows[0].n, escolhidas: esc.rows[0].n };
+  return { conta, naPlaylist: na.rows[0].n, escolhidas: esc.rows[0].n, diag };
 }
 
 const exigirLoginPagina = (req, res, next) => (sessaoValida(req) ? next() : res.redirect("/admin"));
 const urlRetornoSpotify = (req) => `${urlPublica(req)}/admin/spotify/callback`;
 
 app.get("/admin/spotify", exigirLoginPagina, async (req, res) => {
-  const mensagem = req.query.status === "ok" ? "Conta conectada! As próximas músicas já vão para a playlist." : req.query.msg;
-  paginaSpotify(res, { ...(await statusSpotify()), mensagem, erro: req.query.erro });
+  try {
+    const mensagem = req.query.status === "ok" ? "Conta conectada! As próximas músicas já vão para a playlist." : req.query.msg;
+    paginaSpotify(res, { ...(await statusSpotify()), mensagem, erro: req.query.erro });
+  } catch (e) {
+    console.error(e);
+    res.status(500).type("text").send("Não foi possível carregar a página do Spotify agora. Veja os Logs do Render.");
+  }
 });
 
 app.get("/admin/spotify/conectar", exigirLoginPagina, (req, res) => {
@@ -890,6 +947,9 @@ try {
   console.error("Não foi possível conectar ao banco de dados:", e.message);
   process.exit(1);
 }
+
+// Um erro inesperado vai para o log em vez de derrubar o servidor inteiro
+process.on("unhandledRejection", (e) => console.error("Erro não tratado:", e));
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor rodando na porta ${PORT}`);

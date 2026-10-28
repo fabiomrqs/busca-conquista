@@ -241,10 +241,11 @@
     margin: 0 -1.5rem; padding: 2.5rem 1.5rem calc(1rem + env(safe-area-inset-bottom, 0px));
     background: linear-gradient(rgba(255,255,255,0), #fff 2.25rem);
   }
-  .notas { list-style: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem .8rem; }
+  .notas { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem .8rem; }
   .nota {
     --giro: 0deg;
     position: relative; padding: 1.15rem .8rem 1rem; font-size: .88rem; line-height: 1.35; min-height: 118px;
+    min-width: 0; overflow-wrap: anywhere; hyphens: auto; /* nomes e músicas longos quebram dentro do card */
     transform: rotate(var(--giro)); box-shadow: 0 3px 8px rgba(29, 68, 128, .16);
   }
   .nota::before { /* fita adesiva */
@@ -280,7 +281,7 @@
   @media (min-width: 600px) and (max-width: 959px) {
     body { background: #EEF3F8; }
     .tela { max-width: 560px; background: #fff; box-shadow: 0 0 40px rgba(29,68,128,.08); padding-left: 2.5rem; padding-right: 2.5rem; }
-    .notas { grid-template-columns: repeat(3, 1fr); }
+    .notas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     #tela-mural .acoes { margin: 0 -2.5rem; padding-left: 2.5rem; padding-right: 2.5rem; }
   }
 
